@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#050807" />
+    <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
+    <title>Arcana Cabinet｜塔羅藏書室</title>
+    <link rel="stylesheet" href="./styles.css?v=20260814-11" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three/three.module.js",
+          "three/addons/": "./vendor/three/addons/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="file-warning" class="file-warning" hidden>
+      <div>
+        <span>LOCAL SERVER REQUIRED</span>
+        <h1>請用桌面啟動器開啟</h1>
+        <p>瀏覽器會阻擋直接以 file:// 載入 3D 模組。請雙擊本資料夾內的「啟動塔羅藏書室.cmd」。</p>
+      </div>
+    </div>
+
+    <main id="archive" class="archive" data-phase="entrance">
+      <section id="cabinet-scene" class="cabinet-scene" aria-label="神祕塔羅藏書室入口">
+        <div class="scene-image" aria-hidden="true"></div>
+        <div class="scene-depth" aria-hidden="true"></div>
+        <div class="scene-relief" aria-hidden="true"></div>
+        <div class="candle-wash" aria-hidden="true"></div>
+        <div id="dust" class="dust" aria-hidden="true"></div>
+
+        <header class="archive-header">
+          <a class="sigil" href="#" aria-label="塔羅藏書室首頁"><i>✦</i><span>ARCANA<br />CABINET</span></a>
+          <div class="header-meta"><span>PRIVATE COLLECTION</span><b>02 DECKS · LOCAL ARCHIVE</b></div>
+        </header>
+
+        <div class="scene-copy entrance-copy">
+          <p class="kicker">A ROOM BETWEEN STORIES</p>
+          <h1>走進<br />塔羅藏書室</h1>
+          <p class="scene-lead">燭光只照亮被允許閱讀的牌。向書櫃前行，選擇一副牌，讓故事自己浮現。</p>
+          <button id="approach-button" class="ritual-button" type="button"><span>向書櫃走近</span><i>↑</i></button>
+          <small>滑鼠移動可觀察空間深度</small>
+        </div>
+
+        <div class="scene-copy choose-copy" aria-live="polite">
+          <p class="kicker">THE CABINET IS LISTENING</p>
+          <h2>選擇一副牌</h2>
+          <p>點選發光標記。藏品會離開書櫃，進入獨立的深色鑑賞空間。</p>
+          <button id="retreat-button" class="text-button" type="button">← 回到門口</button>
+        </div>
+
+        <div class="tabletop-decks" aria-label="牌桌藏品">
+          <button class="tabletop-deck deck-unveiled" data-deck="unveiled" type="button" aria-label="召喚 The Unveiled Tarot" aria-busy="true" disabled>
+            <i class="deck-aura" aria-hidden="true"></i>
+            <span class="deck-object" aria-hidden="true"></span>
+            <span class="deck-name"><small>COLLECTION 01</small><b>THE UNVEILED TAROT</b><em>點擊召喚</em></span>
+          </button>
+          <button class="tabletop-deck deck-woodland" data-deck="woodland" type="button" aria-label="召喚 Woodland Fairy Tale Tarot" aria-busy="true" disabled>
+            <i class="deck-aura" aria-hidden="true"></i>
+            <span class="deck-object" aria-hidden="true"></span>
+            <span class="deck-name"><small>COLLECTION 02 · NEW</small><b>WOODLAND FAIRY TALE TAROT</b><em>點擊召喚</em></span>
+          </button>
+          <button class="tabletop-deck deck-sealed" data-deck="woodland" data-hero="woodland-inner" type="button" aria-label="召喚 Woodland 內卡盒" aria-busy="true" disabled>
+            <i class="deck-aura" aria-hidden="true"></i>
+            <span class="deck-object" aria-hidden="true"></span>
+            <span class="deck-name"><small>COLLECTION 02 · INNER BOX</small><b>WOODLAND INNER DECK</b><em>點擊召喚</em></span>
+          </button>
+        </div>
+
+        <div class="scene-footer"><span>以 29 張本機照片重建</span><span>無上傳 · 無外部 API</span></div>
+      </section>
+
+      <section id="inspection" class="inspection" aria-hidden="true">
+        <div class="void-gradient" aria-hidden="true"></div>
+        <div class="rune-ring" aria-hidden="true"><i></i><b></b></div>
+        <div id="inspection-particles" class="inspection-particles" aria-hidden="true"></div>
+        <div id="mystic-flash" class="mystic-flash" aria-hidden="true"></div>
+        <div id="three-stage" class="three-stage" aria-label="可旋轉的塔羅牌 3D 鑑賞舞台">
+          <div id="model-loading" class="model-loading"><i></i><span>正在喚醒藏品</span></div>
+        </div>
+
+        <header class="inspection-header">
+          <button id="close-inspection" class="circle-button" type="button" aria-label="返回書櫃">×</button>
+          <div><small id="artifact-number">SELECTED ARTIFACT / 02</small><b id="artifact-header-title">WOODLAND FAIRY TALE TAROT</b></div>
+          <div class="header-actions">
+            <button id="sound-toggle" class="sound-toggle" type="button" aria-pressed="true"><i>◉</i> SOUND ON</button>
+            <span class="local-mark"><i></i>LOCAL 3D</span>
+          </div>
+        </header>
+
+        <aside class="artifact-copy">
+          <p id="artifact-kicker" class="kicker">MAGIC, FOLKLORE &amp; PLANTS</p>
+          <h2 id="artifact-title">WOODLAND<br /><em>Fairy Tale</em> TAROT</h2>
+          <p id="artifact-description">磁吸書型外盒、可取出的說明書、內卡盒與六張已拍攝牌面，依照實物照片分件重建。</p>
+          <dl>
+            <div><dt>STRUCTURE</dt><dd id="artifact-structure">HINGED BOOK BOX</dd></div>
+            <div><dt>AVAILABLE CARDS</dt><dd id="artifact-cards">VI / LXXVIII</dd></div>
+            <div><dt>MODEL BASIS</dt><dd id="artifact-basis">29 PHOTOS</dd></div>
+          </dl>
+        </aside>
+
+        <nav class="mode-tabs" aria-label="鑑賞模式">
+          <button class="mode-tab is-active" data-mode="box" type="button"><small>01</small>牌盒</button>
+          <button id="cards-mode-tab" class="mode-tab" data-mode="cards" type="button"><small>02</small>卡牌</button>
+        </nav>
+
+        <div id="box-controls" class="box-controls">
+          <div class="view-label"><span>六面檢視</span><small>拖曳亦可自由旋轉</small></div>
+          <div class="view-grid">
+            <button class="view-button is-active" data-view="front" type="button">正面</button>
+            <button class="view-button" data-view="back" type="button">背面</button>
+            <button class="view-button" data-view="left" type="button">左側</button>
+            <button class="view-button" data-view="right" type="button">右側</button>
+            <button class="view-button" data-view="top" type="button">頂面</button>
+            <button class="view-button" data-view="bottom" type="button">底面</button>
+          </div>
+          <button id="open-box" class="open-button" type="button"><span>打開磁吸書型盒</span><i>↗</i></button>
+          <p class="box-sequence-hint" aria-live="polite">單擊外盒開啟 · 單擊說明書取出／翻面 · 單擊內卡盒浮出 · 再單擊抽牌</p>
+        </div>
+
+        <div id="card-controls" class="card-controls" aria-hidden="true">
+          <div class="selected-card-title"><small id="card-index">ARCANA 0</small><b id="card-name">THE FOOL</b></div>
+          <div class="card-actions">
+            <button id="previous-card" type="button" aria-label="上一張牌">←</button>
+            <button id="flip-card" type="button"><span>翻至正面</span><i>↻</i></button>
+            <button id="next-card" type="button" aria-label="下一張牌">→</button>
+          </div>
+          <button id="card-catalog-toggle" class="card-catalog-toggle" type="button" aria-expanded="false" aria-controls="card-catalog-panel">
+            <span>牌組目錄</span><small>78 張</small><i aria-hidden="true">⌄</i>
+          </button>
+          <div id="card-catalog-panel" class="card-catalog-panel" hidden>
+            <div id="card-rail" class="card-rail" aria-label="牌面選擇"></div>
+            <p>圓角去背牌面、約 1 mm 西卡紙厚度、紙白亮邊與隨角度滑動的柔和油墨反光；方向鍵切換，再次點選即可翻面。</p>
+          </div>
+        </div>
+
+        <div class="interaction-hint"><i></i><span>拖曳旋轉</span><b>·</b><span>滾輪縮放</span></div>
+      </section>
+    </main>
+
+    <script>
+      if (location.protocol === "file:") {
+        document.querySelector("#file-warning").hidden = false;
+      }
+    </script>
+    <script type="module" src="./app.js?v=20260814-11"></script>
+  </body>
+</html>

@@ -1,0 +1,626 @@
+[
+  {
+    "index": 0,
+    "name": "The Fool",
+    "nameZh": "愚者",
+    "suit": "Major Arcana",
+    "rank": "0",
+    "file": "cards/card-00.webp"
+  },
+  {
+    "index": 1,
+    "name": "The Magician",
+    "nameZh": "魔術師",
+    "suit": "Major Arcana",
+    "rank": "1",
+    "file": "cards/card-01.webp"
+  },
+  {
+    "index": 2,
+    "name": "The High Priestess",
+    "nameZh": "女祭司",
+    "suit": "Major Arcana",
+    "rank": "2",
+    "file": "cards/card-02.webp"
+  },
+  {
+    "index": 3,
+    "name": "The Empress",
+    "nameZh": "皇后",
+    "suit": "Major Arcana",
+    "rank": "3",
+    "file": "cards/card-03.webp"
+  },
+  {
+    "index": 4,
+    "name": "The Emperor",
+    "nameZh": "皇帝",
+    "suit": "Major Arcana",
+    "rank": "4",
+    "file": "cards/card-04.webp"
+  },
+  {
+    "index": 5,
+    "name": "The Hierophant",
+    "nameZh": "教皇",
+    "suit": "Major Arcana",
+    "rank": "5",
+    "file": "cards/card-05.webp"
+  },
+  {
+    "index": 6,
+    "name": "The Lovers",
+    "nameZh": "戀人",
+    "suit": "Major Arcana",
+    "rank": "6",
+    "file": "cards/card-06.webp"
+  },
+  {
+    "index": 7,
+    "name": "The Chariot",
+    "nameZh": "戰車",
+    "suit": "Major Arcana",
+    "rank": "7",
+    "file": "cards/card-07.webp"
+  },
+  {
+    "index": 8,
+    "name": "Strength",
+    "nameZh": "力量",
+    "suit": "Major Arcana",
+    "rank": "8",
+    "file": "cards/card-08.webp"
+  },
+  {
+    "index": 9,
+    "name": "The Hermit",
+    "nameZh": "隱者",
+    "suit": "Major Arcana",
+    "rank": "9",
+    "file": "cards/card-09.webp"
+  },
+  {
+    "index": 10,
+    "name": "Wheel of Fortune",
+    "nameZh": "命運之輪",
+    "suit": "Major Arcana",
+    "rank": "10",
+    "file": "cards/card-10.webp"
+  },
+  {
+    "index": 11,
+    "name": "Justice",
+    "nameZh": "正義",
+    "suit": "Major Arcana",
+    "rank": "11",
+    "file": "cards/card-11.webp"
+  },
+  {
+    "index": 12,
+    "name": "The Hanged Man",
+    "nameZh": "倒吊人",
+    "suit": "Major Arcana",
+    "rank": "12",
+    "file": "cards/card-12.webp"
+  },
+  {
+    "index": 13,
+    "name": "Death",
+    "nameZh": "死神",
+    "suit": "Major Arcana",
+    "rank": "13",
+    "file": "cards/card-13.webp"
+  },
+  {
+    "index": 14,
+    "name": "Temperance",
+    "nameZh": "節制",
+    "suit": "Major Arcana",
+    "rank": "14",
+    "file": "cards/card-14.webp"
+  },
+  {
+    "index": 15,
+    "name": "The Devil",
+    "nameZh": "惡魔",
+    "suit": "Major Arcana",
+    "rank": "15",
+    "file": "cards/card-15.webp"
+  },
+  {
+    "index": 16,
+    "name": "The Tower",
+    "nameZh": "高塔",
+    "suit": "Major Arcana",
+    "rank": "16",
+    "file": "cards/card-16.webp"
+  },
+  {
+    "index": 17,
+    "name": "The Star",
+    "nameZh": "星星",
+    "suit": "Major Arcana",
+    "rank": "17",
+    "file": "cards/card-17.webp"
+  },
+  {
+    "index": 18,
+    "name": "The Moon",
+    "nameZh": "月亮",
+    "suit": "Major Arcana",
+    "rank": "18",
+    "file": "cards/card-18.webp"
+  },
+  {
+    "index": 19,
+    "name": "The Sun",
+    "nameZh": "太陽",
+    "suit": "Major Arcana",
+    "rank": "19",
+    "file": "cards/card-19.webp"
+  },
+  {
+    "index": 20,
+    "name": "Judgement",
+    "nameZh": "審判",
+    "suit": "Major Arcana",
+    "rank": "20",
+    "file": "cards/card-20.webp"
+  },
+  {
+    "index": 21,
+    "name": "The World",
+    "nameZh": "世界",
+    "suit": "Major Arcana",
+    "rank": "21",
+    "file": "cards/card-21.webp"
+  },
+  {
+    "index": 22,
+    "name": "Ace of Wands",
+    "nameZh": "權杖王牌",
+    "suit": "Wands",
+    "rank": "Ace",
+    "file": "cards/card-22.webp"
+  },
+  {
+    "index": 23,
+    "name": "Two of Wands",
+    "nameZh": "權杖二",
+    "suit": "Wands",
+    "rank": "2",
+    "file": "cards/card-23.webp"
+  },
+  {
+    "index": 24,
+    "name": "Three of Wands",
+    "nameZh": "權杖三",
+    "suit": "Wands",
+    "rank": "3",
+    "file": "cards/card-24.webp"
+  },
+  {
+    "index": 25,
+    "name": "Four of Wands",
+    "nameZh": "權杖四",
+    "suit": "Wands",
+    "rank": "4",
+    "file": "cards/card-25.webp"
+  },
+  {
+    "index": 26,
+    "name": "Five of Wands",
+    "nameZh": "權杖五",
+    "suit": "Wands",
+    "rank": "5",
+    "file": "cards/card-26.webp"
+  },
+  {
+    "index": 27,
+    "name": "Six of Wands",
+    "nameZh": "權杖六",
+    "suit": "Wands",
+    "rank": "6",
+    "file": "cards/card-27.webp"
+  },
+  {
+    "index": 28,
+    "name": "Seven of Wands",
+    "nameZh": "權杖七",
+    "suit": "Wands",
+    "rank": "7",
+    "file": "cards/card-28.webp"
+  },
+  {
+    "index": 29,
+    "name": "Eight of Wands",
+    "nameZh": "權杖八",
+    "suit": "Wands",
+    "rank": "8",
+    "file": "cards/card-29.webp"
+  },
+  {
+    "index": 30,
+    "name": "Nine of Wands",
+    "nameZh": "權杖九",
+    "suit": "Wands",
+    "rank": "9",
+    "file": "cards/card-30.webp"
+  },
+  {
+    "index": 31,
+    "name": "Ten of Wands",
+    "nameZh": "權杖十",
+    "suit": "Wands",
+    "rank": "10",
+    "file": "cards/card-31.webp"
+  },
+  {
+    "index": 32,
+    "name": "Page of Wands",
+    "nameZh": "權杖侍者",
+    "suit": "Wands",
+    "rank": "Page",
+    "file": "cards/card-32.webp"
+  },
+  {
+    "index": 33,
+    "name": "Knight of Wands",
+    "nameZh": "權杖騎士",
+    "suit": "Wands",
+    "rank": "Knight",
+    "file": "cards/card-33.webp"
+  },
+  {
+    "index": 34,
+    "name": "Queen of Wands",
+    "nameZh": "權杖皇后",
+    "suit": "Wands",
+    "rank": "Queen",
+    "file": "cards/card-34.webp"
+  },
+  {
+    "index": 35,
+    "name": "King of Wands",
+    "nameZh": "權杖國王",
+    "suit": "Wands",
+    "rank": "King",
+    "file": "cards/card-35.webp"
+  },
+  {
+    "index": 36,
+    "name": "Ace of Cups",
+    "nameZh": "聖杯王牌",
+    "suit": "Cups",
+    "rank": "Ace",
+    "file": "cards/card-36.webp"
+  },
+  {
+    "index": 37,
+    "name": "Two of Cups",
+    "nameZh": "聖杯二",
+    "suit": "Cups",
+    "rank": "2",
+    "file": "cards/card-37.webp"
+  },
+  {
+    "index": 38,
+    "name": "Three of Cups",
+    "nameZh": "聖杯三",
+    "suit": "Cups",
+    "rank": "3",
+    "file": "cards/card-38.webp"
+  },
+  {
+    "index": 39,
+    "name": "Four of Cups",
+    "nameZh": "聖杯四",
+    "suit": "Cups",
+    "rank": "4",
+    "file": "cards/card-39.webp"
+  },
+  {
+    "index": 40,
+    "name": "Five of Cups",
+    "nameZh": "聖杯五",
+    "suit": "Cups",
+    "rank": "5",
+    "file": "cards/card-40.webp"
+  },
+  {
+    "index": 41,
+    "name": "Six of Cups",
+    "nameZh": "聖杯六",
+    "suit": "Cups",
+    "rank": "6",
+    "file": "cards/card-41.webp"
+  },
+  {
+    "index": 42,
+    "name": "Seven of Cups",
+    "nameZh": "聖杯七",
+    "suit": "Cups",
+    "rank": "7",
+    "file": "cards/card-42.webp"
+  },
+  {
+    "index": 43,
+    "name": "Eight of Cups",
+    "nameZh": "聖杯八",
+    "suit": "Cups",
+    "rank": "8",
+    "file": "cards/card-43.webp"
+  },
+  {
+    "index": 44,
+    "name": "Nine of Cups",
+    "nameZh": "聖杯九",
+    "suit": "Cups",
+    "rank": "9",
+    "file": "cards/card-44.webp"
+  },
+  {
+    "index": 45,
+    "name": "Ten of Cups",
+    "nameZh": "聖杯十",
+    "suit": "Cups",
+    "rank": "10",
+    "file": "cards/card-45.webp"
+  },
+  {
+    "index": 46,
+    "name": "Page of Cups",
+    "nameZh": "聖杯侍者",
+    "suit": "Cups",
+    "rank": "Page",
+    "file": "cards/card-46.webp"
+  },
+  {
+    "index": 47,
+    "name": "Knight of Cups",
+    "nameZh": "聖杯騎士",
+    "suit": "Cups",
+    "rank": "Knight",
+    "file": "cards/card-47.webp"
+  },
+  {
+    "index": 48,
+    "name": "Queen of Cups",
+    "nameZh": "聖杯皇后",
+    "suit": "Cups",
+    "rank": "Queen",
+    "file": "cards/card-48.webp"
+  },
+  {
+    "index": 49,
+    "name": "King of Cups",
+    "nameZh": "聖杯國王",
+    "suit": "Cups",
+    "rank": "King",
+    "file": "cards/card-49.webp"
+  },
+  {
+    "index": 50,
+    "name": "Ace of Swords",
+    "nameZh": "寶劍王牌",
+    "suit": "Swords",
+    "rank": "Ace",
+    "file": "cards/card-50.webp"
+  },
+  {
+    "index": 51,
+    "name": "Two of Swords",
+    "nameZh": "寶劍二",
+    "suit": "Swords",
+    "rank": "2",
+    "file": "cards/card-51.webp"
+  },
+  {
+    "index": 52,
+    "name": "Three of Swords",
+    "nameZh": "寶劍三",
+    "suit": "Swords",
+    "rank": "3",
+    "file": "cards/card-52.webp"
+  },
+  {
+    "index": 53,
+    "name": "Four of Swords",
+    "nameZh": "寶劍四",
+    "suit": "Swords",
+    "rank": "4",
+    "file": "cards/card-53.webp"
+  },
+  {
+    "index": 54,
+    "name": "Five of Swords",
+    "nameZh": "寶劍五",
+    "suit": "Swords",
+    "rank": "5",
+    "file": "cards/card-54.webp"
+  },
+  {
+    "index": 55,
+    "name": "Six of Swords",
+    "nameZh": "寶劍六",
+    "suit": "Swords",
+    "rank": "6",
+    "file": "cards/card-55.webp"
+  },
+  {
+    "index": 56,
+    "name": "Seven of Swords",
+    "nameZh": "寶劍七",
+    "suit": "Swords",
+    "rank": "7",
+    "file": "cards/card-56.webp"
+  },
+  {
+    "index": 57,
+    "name": "Eight of Swords",
+    "nameZh": "寶劍八",
+    "suit": "Swords",
+    "rank": "8",
+    "file": "cards/card-57.webp"
+  },
+  {
+    "index": 58,
+    "name": "Nine of Swords",
+    "nameZh": "寶劍九",
+    "suit": "Swords",
+    "rank": "9",
+    "file": "cards/card-58.webp"
+  },
+  {
+    "index": 59,
+    "name": "Ten of Swords",
+    "nameZh": "寶劍十",
+    "suit": "Swords",
+    "rank": "10",
+    "file": "cards/card-59.webp"
+  },
+  {
+    "index": 60,
+    "name": "Page of Swords",
+    "nameZh": "寶劍侍者",
+    "suit": "Swords",
+    "rank": "Page",
+    "file": "cards/card-60.webp"
+  },
+  {
+    "index": 61,
+    "name": "Knight of Swords",
+    "nameZh": "寶劍騎士",
+    "suit": "Swords",
+    "rank": "Knight",
+    "file": "cards/card-61.webp"
+  },
+  {
+    "index": 62,
+    "name": "Queen of Swords",
+    "nameZh": "寶劍皇后",
+    "suit": "Swords",
+    "rank": "Queen",
+    "file": "cards/card-62.webp"
+  },
+  {
+    "index": 63,
+    "name": "King of Swords",
+    "nameZh": "寶劍國王",
+    "suit": "Swords",
+    "rank": "King",
+    "file": "cards/card-63.webp"
+  },
+  {
+    "index": 64,
+    "name": "Ace of Pentacles",
+    "nameZh": "錢幣王牌",
+    "suit": "Pentacles",
+    "rank": "Ace",
+    "file": "cards/card-64.webp"
+  },
+  {
+    "index": 65,
+    "name": "Two of Pentacles",
+    "nameZh": "錢幣二",
+    "suit": "Pentacles",
+    "rank": "2",
+    "file": "cards/card-65.webp"
+  },
+  {
+    "index": 66,
+    "name": "Three of Pentacles",
+    "nameZh": "錢幣三",
+    "suit": "Pentacles",
+    "rank": "3",
+    "file": "cards/card-66.webp"
+  },
+  {
+    "index": 67,
+    "name": "Four of Pentacles",
+    "nameZh": "錢幣四",
+    "suit": "Pentacles",
+    "rank": "4",
+    "file": "cards/card-67.webp"
+  },
+  {
+    "index": 68,
+    "name": "Five of Pentacles",
+    "nameZh": "錢幣五",
+    "suit": "Pentacles",
+    "rank": "5",
+    "file": "cards/card-68.webp"
+  },
+  {
+    "index": 69,
+    "name": "Six of Pentacles",
+    "nameZh": "錢幣六",
+    "suit": "Pentacles",
+    "rank": "6",
+    "file": "cards/card-69.webp"
+  },
+  {
+    "index": 70,
+    "name": "Seven of Pentacles",
+    "nameZh": "錢幣七",
+    "suit": "Pentacles",
+    "rank": "7",
+    "file": "cards/card-70.webp"
+  },
+  {
+    "index": 71,
+    "name": "Eight of Pentacles",
+    "nameZh": "錢幣八",
+    "suit": "Pentacles",
+    "rank": "8",
+    "file": "cards/card-71.webp"
+  },
+  {
+    "index": 72,
+    "name": "Nine of Pentacles",
+    "nameZh": "錢幣九",
+    "suit": "Pentacles",
+    "rank": "9",
+    "file": "cards/card-72.webp"
+  },
+  {
+    "index": 73,
+    "name": "Ten of Pentacles",
+    "nameZh": "錢幣十",
+    "suit": "Pentacles",
+    "rank": "10",
+    "file": "cards/card-73.webp"
+  },
+  {
+    "index": 74,
+    "name": "Page of Pentacles",
+    "nameZh": "錢幣侍者",
+    "suit": "Pentacles",
+    "rank": "Page",
+    "file": "cards/card-74.webp"
+  },
+  {
+    "index": 75,
+    "name": "Knight of Pentacles",
+    "nameZh": "錢幣騎士",
+    "suit": "Pentacles",
+    "rank": "Knight",
+    "file": "cards/card-75.webp"
+  },
+  {
+    "index": 76,
+    "name": "Queen of Pentacles",
+    "nameZh": "錢幣皇后",
+    "suit": "Pentacles",
+    "rank": "Queen",
+    "file": "cards/card-76.webp"
+  },
+  {
+    "index": 77,
+    "name": "King of Pentacles",
+    "nameZh": "錢幣國王",
+    "suit": "Pentacles",
+    "rank": "King",
+    "file": "cards/card-77.webp"
+  }
+]

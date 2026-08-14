@@ -1,0 +1,42 @@
+{
+  "deck": "Woodland Fairy Tale Tarot",
+  "sourceCount": 29,
+  "textureCount": 29,
+  "sceneSource": "a57ef38e-49cc-49ab-9e32-2dbfafcb2762.jpg",
+  "sceneTexture": "scene/cabinet-reboxed-v2.jpg",
+  "processing": "local crop, resize, perspective artwork replacement, mild contrast/color normalization",
+  "generativeFill": false,
+  "externalApi": false,
+  "cards": [
+    {
+      "index": 0,
+      "name": "The Fool",
+      "texture": "card-00-fool.png"
+    },
+    {
+      "index": 1,
+      "name": "The Magician",
+      "texture": "card-01-magician.png"
+    },
+    {
+      "index": 2,
+      "name": "The High Priestess",
+      "texture": "card-02-high-priestess.png"
+    },
+    {
+      "index": 3,
+      "name": "The Empress",
+      "texture": "card-03-empress.png"
+    },
+    {
+      "index": 4,
+      "name": "The Emperor",
+      "texture": "card-04-emperor.png"
+    },
+    {
+      "index": 5,
+      "name": "The Hierophant",
+      "texture": "card-05-hierophant.png"
+    }
+  ]
+}
