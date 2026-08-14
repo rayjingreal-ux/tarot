@@ -177,6 +177,9 @@ const boxControls = document.querySelector("#box-controls");
 const cardControls = document.querySelector("#card-controls");
 const cardsModeTab = document.querySelector("#cards-mode-tab");
 const openButton = document.querySelector("#open-box");
+const viewMenuToggle = document.querySelector("#view-menu-toggle");
+const viewMenuPanel = document.querySelector("#view-menu-panel");
+const currentViewLabel = document.querySelector("#current-view-label");
 const cardRail = document.querySelector("#card-rail");
 const cardCatalogToggle = document.querySelector("#card-catalog-toggle");
 const cardCatalogPanel = document.querySelector("#card-catalog-panel");
@@ -219,7 +222,6 @@ let innerBoxGlowTarget = 0;
 let innerBoxGlowCurrent = 0;
 let cardSummonStartedAt = 0;
 let cardSummonProgress = 0;
-let pendingInnerBoxClick = null;
 let activeView = "front";
 let artifactBrightnessTarget = 1;
 let artifactBrightnessCurrent = 1;
@@ -254,7 +256,14 @@ document.querySelectorAll(".mode-tab").forEach((button) => {
 });
 
 document.querySelectorAll(".view-button").forEach((button) => {
-  button.addEventListener("click", () => activateView(button.dataset.view));
+  button.addEventListener("click", () => {
+    activateView(button.dataset.view);
+    setViewMenuOpen(false);
+  });
+});
+
+viewMenuToggle.addEventListener("click", () => {
+  setViewMenuOpen(viewMenuToggle.getAttribute("aria-expanded") !== "true");
 });
 
 openButton.addEventListener("click", () => {
@@ -374,16 +383,8 @@ function showBoxFeedback(message, tone = "active", duration = 1700) {
 }
 
 
-function clearPendingInnerBoxClick() {
-  if (pendingInnerBoxClick !== null) {
-    window.clearTimeout(pendingInnerBoxClick);
-    pendingInnerBoxClick = null;
-  }
-}
-
-
 function resetWoodlandInteraction() {
-  clearPendingInnerBoxClick();
+  setViewMenuOpen(false);
   woodlandPhase = WOODLAND_PHASE.CLOSED;
   cardRevealComplete = false;
   cardSummonStartedAt = 0;
@@ -399,7 +400,7 @@ function resetWoodlandInteraction() {
   artifactBrightnessTarget = 1;
   artifactBrightnessCurrent = 1;
   cardsModeTab.disabled = true;
-  cardsModeTab.title = "依序開啟說明書，雙擊浮出內卡盒，再單擊抽牌";
+  cardsModeTab.title = "依序單擊說明書與內卡盒，再單擊抽牌";
   inspection.classList.remove("is-inner-box-ready", "is-card-summoning", "is-card-focus", "is-card-back", "is-card-side");
   delete inspection.dataset.woodlandPhase;
 }
@@ -411,7 +412,7 @@ function enterInspection(deckKey) {
   updateArtifactCopy();
   if (deckKey === "woodland") {
     cardsModeTab.disabled = true;
-    cardsModeTab.title = "依序雙擊說明書與內卡盒後開啟";
+    cardsModeTab.title = "依序單擊說明書與內卡盒後開啟";
   }
   woodlandRoot.visible = deckKey === "woodland";
   unveiledRoot.visible = deckKey === "unveiled";
@@ -430,7 +431,7 @@ function enterInspection(deckKey) {
 
 
 function leaveInspection() {
-  clearPendingInnerBoxClick();
+  setViewMenuOpen(false);
   if (woodlandPhase === WOODLAND_PHASE.SUMMONING) {
     woodlandPhase = WOODLAND_PHASE.INNER_READY;
     cardSummonStartedAt = 0;
@@ -458,6 +459,7 @@ function setMode(mode, userInitiated = false) {
   controls.autoRotate = false;
 
   if (cardsActive) {
+    setViewMenuOpen(false);
     setCardCatalogOpen(false);
     setBoxOpen(1, { sound: userInitiated });
     guidebookExtractedTarget = 1;
@@ -501,6 +503,13 @@ function setCardCatalogOpen(open) {
 }
 
 
+function setViewMenuOpen(open) {
+  viewMenuToggle.setAttribute("aria-expanded", String(open));
+  viewMenuPanel.hidden = !open;
+  boxControls.classList.toggle("is-view-menu-open", open);
+}
+
+
 function getActiveOpenTarget() {
   return activeDeckKey === "woodland" ? woodlandOpenTarget : unveiledOpenTarget;
 }
@@ -511,7 +520,7 @@ function setBoxOpen(value, { sound = false } = {}) {
   if (activeDeckKey === "woodland") {
     woodlandOpenTarget = clamped;
     if (clamped < 0.5) {
-      clearPendingInnerBoxClick();
+      setViewMenuOpen(false);
       guidebookExtractedTarget = 0;
       guidebookFlippedTarget = 0;
       innerBoxExtractedTarget = 0;
@@ -521,7 +530,7 @@ function setBoxOpen(value, { sound = false } = {}) {
       cardSummonProgress = 0;
       woodlandPhase = WOODLAND_PHASE.CLOSED;
       cardsModeTab.disabled = true;
-      cardsModeTab.title = "依序開啟說明書，雙擊浮出內卡盒，再單擊抽牌";
+      cardsModeTab.title = "依序單擊說明書與內卡盒，再單擊抽牌";
       inspection.classList.remove("is-inner-box-ready", "is-card-summoning", "is-card-focus", "is-card-back", "is-card-side");
       inspection.dataset.woodlandPhase = woodlandPhase;
     } else if (woodlandPhase === WOODLAND_PHASE.CLOSED) {
@@ -621,7 +630,7 @@ function playBoxSound(open, deckKey) {
   const context = getAudioContext();
   if (!context) return;
   const now = context.currentTime;
-  const duration = deckKey === "woodland" ? 0.5 : 0.38;
+  const duration = 1;
   const noise = createNoiseSource(context, duration);
   const filter = context.createBiquadFilter();
   filter.type = "bandpass";
@@ -1407,7 +1416,6 @@ function beginCardSummoning() {
     innerBoxExtractedCurrent < 0.92 ||
     cardSummonStartedAt > 0
   ) return;
-  clearPendingInnerBoxClick();
   woodlandPhase = WOODLAND_PHASE.SUMMONING;
   cardSummonStartedAt = performance.now();
   cardSummonProgress = 0;
@@ -1437,7 +1445,7 @@ function completeCardSummoning() {
   triggerMysticEffect(0.72);
 }
 
-renderer.domElement.addEventListener("pointerup", (event) => {
+renderer.domElement.addEventListener("click", (event) => {
   if (activeMode !== "cards") return;
   setPointerFromEvent(event);
   const hit = raycaster.intersectObjects(cardMeshes, true)[0];
@@ -1458,7 +1466,7 @@ renderer.domElement.addEventListener("pointermove", (event) => {
 });
 
 renderer.domElement.addEventListener("click", (event) => {
-  if (!inspectionVisible || activeMode !== "box" || event.detail > 1) return;
+  if (!inspectionVisible || activeMode !== "box") return;
   setPointerFromEvent(event);
   const activeRoot = activeDeckKey === "woodland" ? woodlandRoot : unveiledRoot;
 
@@ -1484,25 +1492,6 @@ renderer.domElement.addEventListener("click", (event) => {
   else showBoxFeedback("已點到外盒；請點擊說明書或使用下方開闔按鈕", "muted");
 });
 
-renderer.domElement.addEventListener("dblclick", (event) => {
-  clearPendingInnerBoxClick();
-  if (!inspectionVisible || activeMode !== "box") return;
-  setPointerFromEvent(event);
-  const activeRoot = activeDeckKey === "woodland" ? woodlandRoot : unveiledRoot;
-  const hit = raycaster.intersectObject(activeRoot, true)[0];
-  if (!hit) return;
-
-  if (activeDeckKey === "unveiled") {
-    setBoxOpen(unveiledOpenTarget < 0.5 ? 1 : 0, { sound: true });
-    triggerMysticEffect(0.2);
-    return;
-  }
-
-  // Single click is now the canonical interaction. The first click of a
-  // double-click already performed the action, so do not apply it twice.
-  showBoxFeedback("單擊即可操作藏品", "muted", 900);
-});
-
 const viewPositions = {
   front: [0.16, 0.1, 4.55],
   back: [-0.16, 0.1, -4.55],
@@ -1510,6 +1499,9 @@ const viewPositions = {
   right: [4.1, 0.08, -0.15],
   top: [0.28, 4.2, 1.05],
   bottom: [-0.2, -4.1, 1.05],
+};
+const VIEW_LABELS = {
+  front: "正面", back: "背面", left: "左側", right: "右側", top: "頂面", bottom: "底面",
 };
 
 function queueCamera(position, target = [0, 0, 0], duration = 760) {
@@ -1528,6 +1520,7 @@ function activateView(name) {
   const position = viewPositions[name];
   if (!position) return;
   activeView = name;
+  currentViewLabel.textContent = VIEW_LABELS[name] ?? name;
   document.querySelectorAll(".view-button").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.view === name);
   });
@@ -1698,13 +1691,20 @@ function updateCardFocus(dt, time) {
 }
 
 
+function moveAtOneSecond(current, target, dt) {
+  if (current === target) return target;
+  const next = current + Math.sign(target - current) * dt;
+  return target > current ? Math.min(next, target) : Math.max(next, target);
+}
+
+
 function animate(now) {
   const dt = Math.min((now - lastFrameTime) / 1000, 0.05);
   lastFrameTime = now;
   const time = now / 1000;
 
   const coverTarget = woodlandOpenTarget > 0.5 || guidebookExtractedCurrent > 0.03 || innerBoxExtractedCurrent > 0.03 ? 1 : 0;
-  woodlandOpenCurrent = THREE.MathUtils.damp(woodlandOpenCurrent, coverTarget, 5.5, dt);
+  woodlandOpenCurrent = moveAtOneSecond(woodlandOpenCurrent, coverTarget, dt);
   const woodlandEase = woodlandOpenCurrent * woodlandOpenCurrent * (3 - 2 * woodlandOpenCurrent);
   woodlandHinge.rotation.y = -woodlandEase * Math.PI * 0.86;
   guidebookExtractedCurrent = THREE.MathUtils.damp(guidebookExtractedCurrent, guidebookExtractedTarget, 4.4, dt);
@@ -1734,7 +1734,7 @@ function animate(now) {
   }
   updateInnerBoxEffects(dt, time, now);
 
-  unveiledOpenCurrent = THREE.MathUtils.damp(unveiledOpenCurrent, unveiledOpenTarget, 5.2, dt);
+  unveiledOpenCurrent = moveAtOneSecond(unveiledOpenCurrent, unveiledOpenTarget, dt);
   const unveiledEase = unveiledOpenCurrent * unveiledOpenCurrent * (3 - 2 * unveiledOpenCurrent);
   unveiledDrawer.position.y = -unveiledEase * 1.13;
   unveiledDrawer.position.z = unveiledEase * 0.12;

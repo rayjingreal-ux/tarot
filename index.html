@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#050807" />
     <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
     <title>Arcana Cabinet｜塔羅藏書室</title>
-    <link rel="stylesheet" href="./styles.css?v=20260814-11" />
+    <link rel="stylesheet" href="./styles.css?v=20260814-12" />
     <script type="importmap">
       {
         "imports": {
@@ -21,7 +21,7 @@
       <div>
         <span>LOCAL SERVER REQUIRED</span>
         <h1>請用桌面啟動器開啟</h1>
-        <p>瀏覽器會阻擋直接以 file:// 載入 3D 模組。請雙擊本資料夾內的「啟動塔羅藏書室.cmd」。</p>
+        <p>瀏覽器會阻擋直接以 file:// 載入 3D 模組，請改用本機伺服器開啟。</p>
       </div>
     </div>
 
@@ -109,17 +109,22 @@
         </nav>
 
         <div id="box-controls" class="box-controls">
-          <div class="view-label"><span>六面檢視</span><small>拖曳亦可自由旋轉</small></div>
-          <div class="view-grid">
-            <button class="view-button is-active" data-view="front" type="button">正面</button>
-            <button class="view-button" data-view="back" type="button">背面</button>
-            <button class="view-button" data-view="left" type="button">左側</button>
-            <button class="view-button" data-view="right" type="button">右側</button>
-            <button class="view-button" data-view="top" type="button">頂面</button>
-            <button class="view-button" data-view="bottom" type="button">底面</button>
-          </div>
           <button id="open-box" class="open-button" type="button"><span>打開磁吸書型盒</span><i>↗</i></button>
           <p class="box-sequence-hint" aria-live="polite">單擊外盒開啟 · 單擊說明書取出／翻面 · 單擊內卡盒浮出 · 再單擊抽牌</p>
+          <button id="view-menu-toggle" class="view-menu-toggle" type="button" aria-expanded="false" aria-controls="view-menu-panel">
+            <span>六面檢視</span><small id="current-view-label">正面</small><i aria-hidden="true">⌃</i>
+          </button>
+          <div id="view-menu-panel" class="view-menu-panel" hidden>
+            <div class="view-label"><small>選擇視角；也可直接拖曳旋轉</small></div>
+            <div class="view-grid">
+              <button class="view-button is-active" data-view="front" type="button">正面</button>
+              <button class="view-button" data-view="back" type="button">背面</button>
+              <button class="view-button" data-view="left" type="button">左側</button>
+              <button class="view-button" data-view="right" type="button">右側</button>
+              <button class="view-button" data-view="top" type="button">頂面</button>
+              <button class="view-button" data-view="bottom" type="button">底面</button>
+            </div>
+          </div>
         </div>
 
         <div id="card-controls" class="card-controls" aria-hidden="true">
@@ -147,6 +152,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260814-11"></script>
+    <script type="module" src="./app.js?v=20260814-12"></script>
   </body>
 </html>
