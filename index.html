@@ -128,11 +128,15 @@
         </div>
 
         <div id="card-controls" class="card-controls" aria-hidden="true">
-          <div class="selected-card-title"><small id="card-index">ARCANA 0</small><b id="card-name">THE FOOL</b></div>
+          <div class="selected-card-title" aria-live="polite"><small id="card-index">ARCANA 0</small><b id="card-name">THE FOOL</b></div>
           <div class="card-actions">
             <button id="previous-card" type="button" aria-label="上一張牌">←</button>
             <button id="flip-card" type="button"><span>翻至正面</span><i>↻</i></button>
             <button id="next-card" type="button" aria-label="下一張牌">→</button>
+          </div>
+          <div class="deck-flow-actions">
+            <button id="redraw-card" type="button"><span>重新抽牌</span><small>3 秒環行</small></button>
+            <button id="return-deck" type="button"><span>收回牌盒</span><small>依序歸位</small></button>
           </div>
           <button id="card-catalog-toggle" class="card-catalog-toggle" type="button" aria-expanded="false" aria-controls="card-catalog-panel">
             <span>牌組目錄</span><small>78 張</small><i aria-hidden="true">⌄</i>
@@ -152,6 +156,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260814-12"></script>
+    <script type="module" src="./app.js?v=20260814-15"></script>
   </body>
 </html>

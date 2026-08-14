@@ -186,6 +186,8 @@ const cardCatalogPanel = document.querySelector("#card-catalog-panel");
 const cardIndex = document.querySelector("#card-index");
 const cardName = document.querySelector("#card-name");
 const flipCardButton = document.querySelector("#flip-card");
+const redrawCardButton = document.querySelector("#redraw-card");
+const returnDeckButton = document.querySelector("#return-deck");
 const soundToggle = document.querySelector("#sound-toggle");
 const boxSequenceHint = document.querySelector(".box-sequence-hint");
 let feedbackResetTimer = null;
@@ -216,6 +218,7 @@ const WOODLAND_PHASE = Object.freeze({
   INNER_READY: "inner-ready",
   SUMMONING: "summoning",
   CARDS: "cards",
+  RETURNING: "returning",
 });
 let woodlandPhase = WOODLAND_PHASE.CLOSED;
 let cardRevealComplete = false;
@@ -227,6 +230,19 @@ let cardRailAssetsReady = false;
 let cardWebGLAssetsReady = false;
 const CARD_SUMMON_RAY_EXPAND_MS = 2200;
 const CARD_SUMMON_MIN_DURATION_MS = 4200;
+const CARD_REDRAW_DURATION_MS = 3000;
+const CARD_RETURN_BEAM_DURATION_MS = 1500;
+const SCENE_TAP_MAX_DURATION_MS = 520;
+const SCENE_TAP_MAX_MOVE_PX = 9;
+let cardRedrawStartedAt = 0;
+let cardRedrawProgress = 0;
+let deckReturnStartedAt = 0;
+let deckReturnStageStartedAt = 0;
+let deckReturnStage = null;
+let deckReturnProgress = 0;
+let returnCardOrigins = [];
+let returnBeams = null;
+let returnBeamMaterial = null;
 let activeView = "front";
 let artifactBrightnessTarget = 1;
 let artifactBrightnessCurrent = 1;
@@ -272,7 +288,7 @@ viewMenuToggle.addEventListener("click", () => {
 });
 
 openButton.addEventListener("click", () => {
-  if (woodlandPhase === WOODLAND_PHASE.SUMMONING) return;
+  if (woodlandPhase === WOODLAND_PHASE.SUMMONING || isCardTransitionActive()) return;
   const open = getActiveOpenTarget() < 0.5;
   setBoxOpen(open ? 1 : 0, { sound: true });
   triggerMysticEffect(0.28);
@@ -285,17 +301,26 @@ soundToggle.addEventListener("click", () => {
   if (soundEnabled) playCardSlide(0);
 });
 
-document.querySelector("#previous-card").addEventListener("click", () => selectCard(selectedCard - 1));
-document.querySelector("#next-card").addEventListener("click", () => selectCard(selectedCard + 1));
-flipCardButton.addEventListener("click", flipSelectedCard);
+document.querySelector("#previous-card").addEventListener("click", () => {
+  if (!isCardTransitionActive()) selectCard(selectedCard - 1);
+});
+document.querySelector("#next-card").addEventListener("click", () => {
+  if (!isCardTransitionActive()) selectCard(selectedCard + 1);
+});
+flipCardButton.addEventListener("click", () => {
+  if (!isCardTransitionActive()) flipSelectedCard();
+});
+redrawCardButton.addEventListener("click", beginCardRedraw);
+returnDeckButton.addEventListener("click", beginDeckReturn);
 cardCatalogToggle.addEventListener("click", () => {
+  if (isCardTransitionActive()) return;
   setCardCatalogOpen(cardCatalogToggle.getAttribute("aria-expanded") !== "true");
 });
 
 window.addEventListener("keydown", (event) => {
   if (!inspectionVisible) return;
   if (event.key === "Escape") leaveInspection();
-  if (activeMode === "cards") {
+  if (activeMode === "cards" && !isCardTransitionActive()) {
     if (event.key === "ArrowLeft") selectCard(selectedCard - 1);
     if (event.key === "ArrowRight") selectCard(selectedCard + 1);
     if (event.key === " " || event.key === "Enter") flipSelectedCard();
@@ -446,6 +471,7 @@ function resetWoodlandInteraction() {
   inspection.removeAttribute("aria-busy");
   inspection.classList.remove("is-inner-box-ready", "is-card-summoning", "is-card-focus", "is-card-back", "is-card-side");
   delete inspection.dataset.woodlandPhase;
+  resetCardTransitionState();
 }
 
 
@@ -483,6 +509,7 @@ function leaveInspection() {
   inspectionVisible = false;
   inspection.classList.remove("is-visible", "is-summoning");
   inspection.classList.remove("is-card-summoning", "is-card-focus", "is-card-back", "is-card-side");
+  resetCardTransitionState();
   inspection.removeAttribute("aria-busy");
   inspection.setAttribute("aria-hidden", "true");
   controls.autoRotate = false;
@@ -490,6 +517,7 @@ function leaveInspection() {
 
 
 function setMode(mode, userInitiated = false) {
+  if (isCardTransitionActive()) return;
   if (mode === "cards" && !DECKS[activeDeckKey].hasCards) return;
   if (mode === "cards" && activeDeckKey === "woodland" && !cardRevealComplete) return;
   activeMode = mode;
@@ -544,6 +572,48 @@ function setCardCatalogOpen(open) {
   cardCatalogToggle.setAttribute("aria-expanded", String(open));
   cardCatalogPanel.hidden = !open;
   cardControls.classList.toggle("is-catalog-open", open);
+}
+
+
+function isCardTransitionActive() {
+  return cardRedrawStartedAt > 0 || deckReturnStartedAt > 0;
+}
+
+
+function setCardInteractionLocked(locked) {
+  const buttons = [
+    document.querySelector("#previous-card"),
+    document.querySelector("#next-card"),
+    flipCardButton,
+    redrawCardButton,
+    returnDeckButton,
+    cardCatalogToggle,
+  ];
+  buttons.forEach((button) => { button.disabled = locked; });
+  Array.from(cardRail.children).forEach((button) => { button.disabled = locked; });
+  const boxModeTab = document.querySelector('.mode-tab[data-mode="box"]');
+  boxModeTab.disabled = locked;
+  cardsModeTab.disabled = locked || (activeDeckKey === "woodland" && !cardRevealComplete);
+}
+
+
+function resetCardTransitionState() {
+  cardRedrawStartedAt = 0;
+  cardRedrawProgress = 0;
+  deckReturnStartedAt = 0;
+  deckReturnStageStartedAt = 0;
+  deckReturnStage = null;
+  deckReturnProgress = 0;
+  returnCardOrigins = [];
+  inspection.classList.remove("is-card-redrawing", "is-deck-returning");
+  delete inspection.dataset.cardTransition;
+  delete inspection.dataset.returnStage;
+  inspection.removeAttribute("aria-busy");
+  if (returnBeams) {
+    returnBeams.visible = false;
+    returnBeamMaterial.opacity = 0;
+  }
+  setCardInteractionLocked(false);
 }
 
 
@@ -773,6 +843,42 @@ controls.enablePan = false;
 controls.minDistance = 2.25;
 controls.maxDistance = 7;
 controls.target.set(0, 0, 0);
+
+let scenePointerGesture = null;
+let sceneClickAllowed = null;
+renderer.domElement.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) return;
+  scenePointerGesture = {
+    pointerId: event.pointerId,
+    startedAt: performance.now(),
+    startX: event.clientX,
+    startY: event.clientY,
+    moved: false,
+  };
+}, true);
+renderer.domElement.addEventListener("pointermove", (event) => {
+  if (!scenePointerGesture || scenePointerGesture.pointerId !== event.pointerId) return;
+  const distance = Math.hypot(event.clientX - scenePointerGesture.startX, event.clientY - scenePointerGesture.startY);
+  if (distance > SCENE_TAP_MAX_MOVE_PX) scenePointerGesture.moved = true;
+}, true);
+renderer.domElement.addEventListener("pointerup", (event) => {
+  if (!scenePointerGesture || scenePointerGesture.pointerId !== event.pointerId) return;
+  const elapsed = performance.now() - scenePointerGesture.startedAt;
+  sceneClickAllowed = !scenePointerGesture.moved && elapsed <= SCENE_TAP_MAX_DURATION_MS;
+  renderer.domElement.dataset.lastGesture = sceneClickAllowed ? "tap" : "drag";
+  scenePointerGesture = null;
+}, true);
+renderer.domElement.addEventListener("pointercancel", () => {
+  scenePointerGesture = null;
+  sceneClickAllowed = false;
+}, true);
+renderer.domElement.addEventListener("click", (event) => {
+  const allowed = sceneClickAllowed !== false;
+  sceneClickAllowed = null;
+  if (allowed) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}, true);
 controls.autoRotate = false;
 
 scene.add(new THREE.HemisphereLight(0xbfd3c9, 0x160f0b, 1.8));
@@ -1244,6 +1350,23 @@ const cardMeshes = CARDS.map((card, index) => {
 cardWebGLAssetsReady = cardMeshes.length === CARDS.length;
 updateCardAssetReadiness();
 
+const returnBeamPositions = new Float32Array(CARDS.length * 6);
+const returnBeamGeometry = new THREE.BufferGeometry();
+returnBeamGeometry.setAttribute("position", new THREE.BufferAttribute(returnBeamPositions, 3));
+returnBeamMaterial = new THREE.LineBasicMaterial({
+  color: 0xf6d58d,
+  transparent: true,
+  opacity: 0,
+  blending: THREE.AdditiveBlending,
+  depthTest: false,
+  depthWrite: false,
+});
+returnBeams = new THREE.LineSegments(returnBeamGeometry, returnBeamMaterial);
+returnBeams.visible = false;
+returnBeams.renderOrder = 18;
+scene.add(returnBeams);
+const returnBeamCenter = new THREE.Vector3(0, 0.08, 0.54);
+
 function createFocusMaskTexture() {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
@@ -1509,8 +1632,147 @@ function completeCardSummoning() {
   triggerMysticEffect(0.72);
 }
 
+
+function beginCardRedraw() {
+  if (activeMode !== "cards" || !cardRevealComplete || isCardTransitionActive()) return;
+  setCardCatalogOpen(false);
+  cardRedrawStartedAt = performance.now();
+  cardRedrawProgress = 0;
+  selectedFlipped = true;
+  inspection.dataset.cardFace = "back";
+  inspection.dataset.cardTransition = "redraw";
+  inspection.classList.add("is-card-redrawing");
+  inspection.setAttribute("aria-busy", "true");
+  cardIndex.textContent = "重新抽牌 · 3 秒";
+  cardName.textContent = "命運環行中";
+  setCardInteractionLocked(true);
+  playInvocationSound();
+  triggerMysticEffect(0.36);
+}
+
+
+function finishCardRedraw() {
+  if (cardRedrawStartedAt <= 0) return;
+  const offset = 1 + Math.floor(Math.random() * Math.max(1, CARDS.length - 1));
+  const nextCard = (selectedCard + offset) % CARDS.length;
+  cardRedrawStartedAt = 0;
+  cardRedrawProgress = 0;
+  inspection.classList.remove("is-card-redrawing");
+  delete inspection.dataset.cardTransition;
+  inspection.removeAttribute("aria-busy");
+  selectCard(nextCard, false);
+  setCardInteractionLocked(false);
+  playCardSlide(offset >= CARDS.length / 2 ? -1 : 1);
+  triggerMysticEffect(0.58);
+}
+
+
+function setDeckReturnStage(stage, now) {
+  deckReturnStage = stage;
+  deckReturnStageStartedAt = now;
+  inspection.dataset.returnStage = stage;
+}
+
+
+function beginDeckReturn() {
+  if (activeMode !== "cards" || !cardRevealComplete || isCardTransitionActive()) return;
+  const now = performance.now();
+  setCardCatalogOpen(false);
+  deckReturnStartedAt = now;
+  deckReturnProgress = 0;
+  returnCardOrigins = cardMeshes.map((card) => ({
+    position: card.position.clone(),
+    scale: card.scale.clone(),
+    rotation: card.rotation.clone(),
+  }));
+  setDeckReturnStage("cards-to-light", now);
+  woodlandPhase = WOODLAND_PHASE.RETURNING;
+  inspection.dataset.woodlandPhase = woodlandPhase;
+  inspection.dataset.cardTransition = "return";
+  inspection.classList.add("is-deck-returning");
+  inspection.setAttribute("aria-busy", "true");
+  cardIndex.textContent = "收回牌盒";
+  cardName.textContent = "牌卡正在化為光束";
+  returnBeams.visible = true;
+  setCardInteractionLocked(true);
+  openButton.disabled = true;
+  playInvocationSound();
+  triggerMysticEffect(0.42);
+}
+
+
+function enterBoxModeDuringReturn(now) {
+  cardsGroup.visible = false;
+  returnBeams.visible = false;
+  returnBeamMaterial.opacity = 0;
+  activeMode = "box";
+  document.querySelectorAll(".mode-tab").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.mode === "box");
+  });
+  cardControls.setAttribute("aria-hidden", "true");
+  boxControls.classList.remove("is-hidden");
+  setViewMenuOpen(false);
+  innerBoxExtractedTarget = 0;
+  innerBoxGlowTarget = 0;
+  artifactBrightnessTarget = 1;
+  artifactTargetScale = 1;
+  artifactTargetPosition.set(0, 0, 0);
+  queueCamera([0.16, 0.1, 4.55], [0, 0, 0.25], 700);
+  setDeckReturnStage("inner-box", now);
+  showBoxFeedback("牌卡已聚攏，正在收回第二層牌盒", "waiting", 0);
+}
+
+
+function finishDeckReturn() {
+  cardsGroup.visible = false;
+  cardRevealComplete = false;
+  artifactBrightnessTarget = 1;
+  artifactTargetScale = 1;
+  artifactTargetPosition.set(0, 0, 0);
+  woodlandPhase = WOODLAND_PHASE.CLOSED;
+  inspection.dataset.woodlandPhase = woodlandPhase;
+  resetCardTransitionState();
+  openButton.disabled = false;
+  cardsModeTab.disabled = true;
+  cardsModeTab.title = "依序單擊說明書與內卡盒，再單擊抽牌";
+  showBoxFeedback("牌卡、第二層牌盒與說明書已歸位，磁吸書型盒已闔上", "active", 3200);
+}
+
+
+function updateCardTransitions(now) {
+  if (cardRedrawStartedAt > 0) {
+    const elapsed = now - cardRedrawStartedAt;
+    cardRedrawProgress = THREE.MathUtils.clamp(elapsed / CARD_REDRAW_DURATION_MS, 0, 1);
+    const remaining = Math.max(1, Math.ceil((CARD_REDRAW_DURATION_MS - elapsed) / 1000));
+    cardIndex.textContent = `重新抽牌 · ${remaining} 秒`;
+    if (cardRedrawProgress >= 1) finishCardRedraw();
+    return;
+  }
+  if (deckReturnStartedAt <= 0) return;
+
+  if (deckReturnStage === "cards-to-light") {
+    deckReturnProgress = THREE.MathUtils.clamp((now - deckReturnStageStartedAt) / CARD_RETURN_BEAM_DURATION_MS, 0, 1);
+    if (deckReturnProgress >= 1) enterBoxModeDuringReturn(now);
+    return;
+  }
+  if (deckReturnStage === "inner-box" && innerBoxExtractedCurrent <= 0.045) {
+    guidebookFlippedTarget = 0;
+    guidebookExtractedTarget = 0;
+    setDeckReturnStage("guidebook", now);
+    showBoxFeedback("第二層牌盒已歸位，正在放回說明書", "waiting", 0);
+    return;
+  }
+  if (deckReturnStage === "guidebook" && guidebookExtractedCurrent <= 0.045) {
+    setDeckReturnStage("outer-cover", now);
+    setBoxOpen(0, { sound: true });
+    openButton.disabled = true;
+    return;
+  }
+  if (deckReturnStage === "outer-cover" && woodlandOpenCurrent <= 0.015) finishDeckReturn();
+}
+
 renderer.domElement.addEventListener("click", (event) => {
-  if (activeMode !== "cards") return;
+  if (activeMode !== "cards" || isCardTransitionActive()) return;
   setPointerFromEvent(event);
   const hit = raycaster.intersectObjects(cardMeshes, true)[0];
   if (!hit) return;
@@ -1530,7 +1792,7 @@ renderer.domElement.addEventListener("pointermove", (event) => {
 });
 
 renderer.domElement.addEventListener("click", (event) => {
-  if (!inspectionVisible || activeMode !== "box") return;
+  if (!inspectionVisible || activeMode !== "box" || isCardTransitionActive()) return;
   setPointerFromEvent(event);
   const activeRoot = activeDeckKey === "woodland" ? woodlandRoot : unveiledRoot;
 
@@ -1613,34 +1875,74 @@ function updateCameraTween(now) {
 
 function updateCards(dt, time) {
   if (!cardsGroup.visible) return;
+  const returningCards = deckReturnStartedAt > 0 && deckReturnStage === "cards-to-light";
+  const redrawing = cardRedrawStartedAt > 0;
   cardMeshes.forEach((card, index) => {
     const isSelected = index === selectedCard;
-    const relative = index - selectedCard;
-    const spreadX = isSelected ? 0 : THREE.MathUtils.clamp(relative, -3, 3) * 0.52;
-    const spreadY = isSelected ? 0.1 : -0.38 - Math.abs(relative) * 0.055;
-    const spreadZ = isSelected ? 1.46 : 0.5 - Math.abs(relative) * 0.07;
-    const targetScale = isSelected ? 1.18 : 0.72;
-    const floatY = isSelected ? Math.sin(time * 1.25) * 0.045 : Math.sin(time * 0.9 + index) * 0.018;
-    card.position.x = THREE.MathUtils.damp(card.position.x, spreadX, 7.5, dt);
-    card.position.y = THREE.MathUtils.damp(card.position.y, spreadY + floatY, 7.5, dt);
-    card.position.z = THREE.MathUtils.damp(card.position.z, spreadZ, 7.5, dt);
-    card.scale.x = THREE.MathUtils.damp(card.scale.x, targetScale, 7.5, dt);
-    card.scale.y = THREE.MathUtils.damp(card.scale.y, targetScale, 7.5, dt);
-    card.scale.z = THREE.MathUtils.damp(card.scale.z, targetScale, 7.5, dt);
-    card.rotation.z = THREE.MathUtils.damp(card.rotation.z, isSelected ? 0 : relative * -0.075, 8, dt);
-    const targetRotationY = isSelected && !selectedFlipped ? 0 : Math.PI;
-    card.rotation.y = THREE.MathUtils.damp(card.rotation.y, targetRotationY, 8.5, dt);
+    if (returningCards) {
+      const origin = returnCardOrigins[index];
+      const progress = deckReturnProgress * deckReturnProgress * (3 - 2 * deckReturnProgress);
+      card.position.lerpVectors(origin.position, returnBeamCenter, progress);
+      card.position.y += Math.sin(progress * Math.PI) * 1.08;
+      const narrow = THREE.MathUtils.lerp(origin.scale.x, 0.022, THREE.MathUtils.smoothstep(progress, 0, 0.55));
+      const vanish = 1 - THREE.MathUtils.smoothstep(progress, 0.7, 1);
+      card.scale.set(narrow * vanish, THREE.MathUtils.lerp(origin.scale.y, 1.52, progress) * vanish, 0.028 * vanish);
+      card.rotation.z = THREE.MathUtils.lerp(origin.rotation.z, 0, progress);
+      card.rotation.y = Math.PI;
+      const offset = index * 6;
+      returnBeamPositions[offset] = card.position.x;
+      returnBeamPositions[offset + 1] = card.position.y - (0.36 + (1 - progress) * 0.5);
+      returnBeamPositions[offset + 2] = card.position.z;
+      returnBeamPositions[offset + 3] = card.position.x;
+      returnBeamPositions[offset + 4] = card.position.y + (0.82 + (1 - progress) * 0.72);
+      returnBeamPositions[offset + 5] = card.position.z;
+    } else if (redrawing) {
+      const angle = index / CARDS.length * Math.PI * 2 + cardRedrawProgress * Math.PI * 4;
+      const radius = 1.22 + Math.sin(cardRedrawProgress * Math.PI) * 0.48;
+      const targetX = Math.cos(angle) * radius;
+      const targetY = Math.sin(angle) * radius * 0.54 + 0.08;
+      const targetZ = 0.84 + Math.sin(angle * 2) * 0.1;
+      const ringScale = 0.27 + Math.sin(cardRedrawProgress * Math.PI) * 0.08;
+      card.position.x = THREE.MathUtils.damp(card.position.x, targetX, 8.5, dt);
+      card.position.y = THREE.MathUtils.damp(card.position.y, targetY, 8.5, dt);
+      card.position.z = THREE.MathUtils.damp(card.position.z, targetZ, 8.5, dt);
+      card.scale.x = THREE.MathUtils.damp(card.scale.x, ringScale, 8.5, dt);
+      card.scale.y = THREE.MathUtils.damp(card.scale.y, ringScale, 8.5, dt);
+      card.scale.z = THREE.MathUtils.damp(card.scale.z, ringScale, 8.5, dt);
+      card.rotation.z = THREE.MathUtils.damp(card.rotation.z, angle + Math.PI * 0.5, 9, dt);
+      card.rotation.y = THREE.MathUtils.damp(card.rotation.y, Math.PI, 9, dt);
+    } else {
+      const relative = index - selectedCard;
+      const spreadX = isSelected ? 0 : THREE.MathUtils.clamp(relative, -3, 3) * 0.52;
+      const spreadY = isSelected ? 0.1 : -0.38 - Math.abs(relative) * 0.055;
+      const spreadZ = isSelected ? 1.46 : 0.5 - Math.abs(relative) * 0.07;
+      const targetScale = isSelected ? 1.18 : 0.72;
+      const floatY = isSelected ? Math.sin(time * 1.25) * 0.045 : Math.sin(time * 0.9 + index) * 0.018;
+      card.position.x = THREE.MathUtils.damp(card.position.x, spreadX, 7.5, dt);
+      card.position.y = THREE.MathUtils.damp(card.position.y, spreadY + floatY, 7.5, dt);
+      card.position.z = THREE.MathUtils.damp(card.position.z, spreadZ, 7.5, dt);
+      card.scale.x = THREE.MathUtils.damp(card.scale.x, targetScale, 7.5, dt);
+      card.scale.y = THREE.MathUtils.damp(card.scale.y, targetScale, 7.5, dt);
+      card.scale.z = THREE.MathUtils.damp(card.scale.z, targetScale, 7.5, dt);
+      card.rotation.z = THREE.MathUtils.damp(card.rotation.z, isSelected ? 0 : relative * -0.075, 8, dt);
+      const targetRotationY = isSelected && !selectedFlipped ? 0 : Math.PI;
+      card.rotation.y = THREE.MathUtils.damp(card.rotation.y, targetRotationY, 8.5, dt);
+    }
     card.userData.reflectionMaterials.forEach((material, surfaceIndex) => {
       const cycle = (time * 0.105 + index * 0.173 + surfaceIndex * 0.41) % 1.38;
       material.uniforms.uSweep.value = -0.16 + cycle;
       material.uniforms.uOpacity.value = THREE.MathUtils.damp(
         material.uniforms.uOpacity.value,
-        isSelected ? 0.88 : 0.25,
+        returningCards ? 0 : redrawing ? 0.4 : isSelected ? 0.88 : 0.25,
         5.5,
         dt
       );
     });
   });
+  if (returningCards) {
+    returnBeamGeometry.attributes.position.needsUpdate = true;
+    returnBeamMaterial.opacity = Math.sin(deckReturnProgress * Math.PI) * 0.92;
+  }
 }
 
 
@@ -1727,7 +2029,7 @@ function updateArtifactPresentation(dt) {
 
 
 function updateCardFocus(dt, time) {
-  const cardActive = inspectionVisible && activeMode === "cards" && cardsGroup.visible;
+  const cardActive = inspectionVisible && activeMode === "cards" && cardsGroup.visible && !isCardTransitionActive();
   const selected = cardMeshes[selectedCard];
   let frontFacing = 1;
   if (selected) {
@@ -1825,6 +2127,7 @@ function animate(now) {
   const scale = THREE.MathUtils.damp(activeRoot.scale.x, artifactTargetScale, 5, dt);
   activeRoot.scale.setScalar(scale);
 
+  updateCardTransitions(now);
   updateCards(dt, time);
   updateArtifactPresentation(dt);
   updateCardFocus(dt, time);

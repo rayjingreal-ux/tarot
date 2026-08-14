@@ -174,6 +174,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--gold); outline-
 .view-button.is-active { border-color:var(--gold-soft); color:var(--gold); background:rgba(211,170,98,.08); }
 .open-button { width:100%; margin-top:9px; padding:12px; display:flex; justify-content:space-between; border:0; background:#ded1b7; color:#12130f; cursor:pointer; font-size:10px; }
 .open-button i { font-style:normal; }
+.open-button:disabled { cursor:wait; opacity:.46; }
 
 .card-controls { width:min(390px,calc(100vw - 70px)); transition:opacity .4s,transform .4s,visibility .4s,width .32s ease; }
 .card-controls.is-catalog-open { width:min(560px,calc(100vw - 70px)); }
@@ -185,7 +186,13 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--gold); outline-
 .card-actions button { min-width:36px; height:33px; border:1px solid var(--line); background:transparent; cursor:pointer; font-size:10px; }
 .card-actions #flip-card { min-width:82px; display:flex; justify-content:space-around; align-items:center; color:var(--gold); }
 .card-actions i { font-style:normal; }
-.card-catalog-toggle { width:100%; margin-top:15px; padding:10px 12px; display:grid; grid-template-columns:1fr auto auto; gap:9px; align-items:center; border:1px solid var(--line); background:rgba(211,170,98,.035); color:#aaa397; cursor:pointer; text-align:left; font:400 10px var(--sans); letter-spacing:.08em; }
+.deck-flow-actions { margin-top:15px; display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.deck-flow-actions button { min-height:43px; padding:8px 11px; display:flex; justify-content:space-between; align-items:center; gap:8px; border:1px solid rgba(211,170,98,.25); background:rgba(211,170,98,.07); color:#d7c7a9; cursor:pointer; font:400 9px var(--sans); letter-spacing:.06em; }
+.deck-flow-actions button:first-child { border-color:rgba(109,168,151,.4); background:rgba(109,168,151,.08); }
+.deck-flow-actions button:hover,.deck-flow-actions button:focus-visible { border-color:var(--gold); color:var(--gold); outline:none; }
+.deck-flow-actions button:disabled,.card-actions button:disabled,.card-catalog-toggle:disabled { cursor:wait; opacity:.38; }
+.deck-flow-actions small { color:#777168; font-size:7px; letter-spacing:.04em; }
+.card-catalog-toggle { width:100%; margin-top:8px; padding:10px 12px; display:grid; grid-template-columns:1fr auto auto; gap:9px; align-items:center; border:1px solid var(--line); background:rgba(211,170,98,.035); color:#aaa397; cursor:pointer; text-align:left; font:400 10px var(--sans); letter-spacing:.08em; }
 .card-catalog-toggle:hover,.card-catalog-toggle:focus-visible { border-color:var(--gold-soft); color:var(--gold); outline:none; }
 .card-catalog-toggle small { color:#706b62; font-size:8px; letter-spacing:.08em; }
 .card-catalog-toggle i { color:var(--gold); font-style:normal; font-size:14px; transition:transform .25s ease; }
@@ -204,8 +211,13 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--gold); outline-
 .mystic-flash { position:absolute; inset:0; z-index:8; pointer-events:none; opacity:0; background:radial-gradient(circle at 50% 50%,rgba(224,197,132,.82),rgba(87,147,131,.18) 24%,transparent 58%); mix-blend-mode:screen; transition:opacity .45s ease; }
 .mystic-flash.is-active { animation:flash .85s ease-out; }
 .inspection.is-card-summoning .mystic-flash { animation:summonGlowHold 1.65s ease-in-out infinite; }
+.inspection.is-card-redrawing .mystic-flash { animation:redrawGlow 1s ease-in-out infinite; }
+.inspection.is-deck-returning .mystic-flash { animation:returnGlow .72s ease-in-out infinite; }
+.inspection.is-card-redrawing .rune-ring { border-color:rgba(211,170,98,.42); animation:slowRotate 3s linear infinite; filter:drop-shadow(0 0 24px rgba(211,170,98,.28)); }
 @keyframes flash { 0%{opacity:0} 12%{opacity:1} 100%{opacity:0} }
 @keyframes summonGlowHold { 0%,100%{opacity:.22;filter:saturate(.9)} 50%{opacity:.52;filter:saturate(1.3)} }
+@keyframes redrawGlow { 0%,100%{opacity:.16;filter:hue-rotate(-8deg)} 50%{opacity:.42;filter:hue-rotate(12deg)} }
+@keyframes returnGlow { 0%,100%{opacity:.2} 50%{opacity:.62} }
 .inspection.is-summoning .rune-ring { animation:invoke 1.7s cubic-bezier(.2,.8,.2,1),slowRotate 28s 1.7s linear infinite; }
 @keyframes invoke { 0%{scale:.18;opacity:0;filter:blur(8px)} 55%{opacity:1} 100%{scale:1;opacity:1;filter:none} }
 
@@ -265,6 +277,8 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--gold); outline-
   .card-actions { top:12px; right:12px; }
   .card-actions button { min-width:34px; height:36px; }
   .card-actions #flip-card { min-width:78px; }
+  .deck-flow-actions { margin-top:12px; }
+  .deck-flow-actions button { min-height:44px; padding:8px; }
   .card-catalog-panel { max-height:27vh; }
   .card-rail { grid-template-columns:repeat(5,1fr); }
   .interaction-hint { display:none; }
