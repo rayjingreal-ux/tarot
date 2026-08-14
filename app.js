@@ -205,6 +205,7 @@ let guidebookExtractedTarget = 0;
 let guidebookExtractedCurrent = 0;
 let guidebookFlippedTarget = 0;
 let guidebookFlippedCurrent = 0;
+let pendingGuidebookExtraction = false;
 let innerBoxExtractedTarget = 0;
 let innerBoxExtractedCurrent = 0;
 const WOODLAND_PHASE = Object.freeze({
@@ -395,6 +396,7 @@ function resetWoodlandInteraction() {
   guidebookExtractedCurrent = 0;
   guidebookFlippedTarget = 0;
   guidebookFlippedCurrent = 0;
+  pendingGuidebookExtraction = false;
   innerBoxExtractedTarget = 0;
   innerBoxExtractedCurrent = 0;
   artifactBrightnessTarget = 1;
@@ -521,6 +523,7 @@ function setBoxOpen(value, { sound = false } = {}) {
     woodlandOpenTarget = clamped;
     if (clamped < 0.5) {
       setViewMenuOpen(false);
+      pendingGuidebookExtraction = false;
       guidebookExtractedTarget = 0;
       guidebookFlippedTarget = 0;
       innerBoxExtractedTarget = 0;
@@ -1350,31 +1353,43 @@ function findInteraction(object, root) {
   return null;
 }
 
-function findInteractiveHit(root) {
+function findInteractiveHit(root, preferredInteraction = null) {
   const hits = raycaster.intersectObject(root, true);
+  let firstInteractive = null;
   for (const hit of hits) {
     const interaction = findInteraction(hit.object, root);
-    if (interaction) return { hit, interaction };
+    if (!interaction) continue;
+    const interactive = { hit, interaction };
+    if (interaction === preferredInteraction) return interactive;
+    if (!firstInteractive) firstInteractive = interactive;
   }
-  return null;
+  return firstInteractive;
+}
+
+function beginGuidebookExtraction() {
+  pendingGuidebookExtraction = false;
+  guidebookExtractedTarget = 1;
+  woodlandPhase = WOODLAND_PHASE.GUIDE_EXTRACTED;
+  inspection.dataset.woodlandPhase = woodlandPhase;
+  playCardSlide(1);
+  triggerMysticEffect(0.25);
+  showBoxFeedback("已選取說明書：正在取出（封面已向右旋轉 90°）");
 }
 
 function handleGuidebookClick() {
   if (woodlandOpenTarget < 0.5) {
+    pendingGuidebookExtraction = true;
     setBoxOpen(1, { sound: true });
+    showBoxFeedback("已接收取書指令：外盒重新開啟後會自動取出說明書", "waiting", 2600);
     return;
   }
   if (woodlandOpenCurrent < 0.68) {
-    showBoxFeedback("外盒仍在開啟，請稍候再點說明書", "waiting");
+    pendingGuidebookExtraction = true;
+    showBoxFeedback("已接收取書指令：外盒開啟後會自動取出說明書", "waiting", 2200);
     return;
   }
   if (guidebookExtractedTarget < 0.5) {
-    guidebookExtractedTarget = 1;
-    woodlandPhase = WOODLAND_PHASE.GUIDE_EXTRACTED;
-    inspection.dataset.woodlandPhase = woodlandPhase;
-    playCardSlide(1);
-    triggerMysticEffect(0.25);
-    showBoxFeedback("已選取說明書：正在取出（封面已向右旋轉 90°）");
+    beginGuidebookExtraction();
     return;
   }
   if (guidebookExtractedCurrent <= 0.86) {
@@ -1477,16 +1492,22 @@ renderer.domElement.addEventListener("click", (event) => {
     return;
   }
 
-  // When closed, the cover is the only intended target. Once open, inspect
-  // every ray hit instead of only the nearest mesh: transparent/frame meshes
-  // can otherwise hide the guidebook and make a valid click look ignored.
+  // During the retract-before-close interval the cover is still visibly open,
+  // even though the logical target has already switched to closed. Preserve a
+  // guidebook click made in that interval and complete it after reopening.
   if (woodlandOpenTarget < 0.5) {
+    const retractingInteraction = woodlandOpenCurrent > 0.12 ? findInteractiveHit(woodlandRoot, "guidebook") : null;
+    if (retractingInteraction?.interaction === "guidebook") {
+      handleGuidebookClick();
+      return;
+    }
     if (raycaster.intersectObject(woodlandRoot, true).length === 0) return;
     setBoxOpen(1, { sound: true });
     triggerMysticEffect(0.2);
     return;
   }
-  const interactive = findInteractiveHit(woodlandRoot);
+  const preferredInteraction = guidebookExtractedTarget < 0.5 ? "guidebook" : null;
+  const interactive = findInteractiveHit(woodlandRoot, preferredInteraction);
   if (interactive?.interaction === "guidebook") handleGuidebookClick();
   else if (interactive?.interaction === "inner-box") handleInnerBoxClick();
   else showBoxFeedback("已點到外盒；請點擊說明書或使用下方開闔按鈕", "muted");
@@ -1705,6 +1726,9 @@ function animate(now) {
 
   const coverTarget = woodlandOpenTarget > 0.5 || guidebookExtractedCurrent > 0.03 || innerBoxExtractedCurrent > 0.03 ? 1 : 0;
   woodlandOpenCurrent = moveAtOneSecond(woodlandOpenCurrent, coverTarget, dt);
+  if (pendingGuidebookExtraction && woodlandOpenTarget > 0.5 && woodlandOpenCurrent >= 0.98) {
+    beginGuidebookExtraction();
+  }
   const woodlandEase = woodlandOpenCurrent * woodlandOpenCurrent * (3 - 2 * woodlandOpenCurrent);
   woodlandHinge.rotation.y = -woodlandEase * Math.PI * 0.86;
   guidebookExtractedCurrent = THREE.MathUtils.damp(guidebookExtractedCurrent, guidebookExtractedTarget, 4.4, dt);
