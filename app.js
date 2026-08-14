@@ -223,6 +223,10 @@ let innerBoxGlowTarget = 0;
 let innerBoxGlowCurrent = 0;
 let cardSummonStartedAt = 0;
 let cardSummonProgress = 0;
+let cardRailAssetsReady = false;
+let cardWebGLAssetsReady = false;
+const CARD_SUMMON_RAY_EXPAND_MS = 2200;
+const CARD_SUMMON_MIN_DURATION_MS = 4200;
 let activeView = "front";
 let artifactBrightnessTarget = 1;
 let artifactBrightnessCurrent = 1;
@@ -330,21 +334,53 @@ function buildDomParticles(container, count, bright) {
 
 function buildCardRail() {
   cardRail.replaceChildren();
+  cardRailAssetsReady = false;
+  const imageReadiness = [];
   CARDS.forEach((card, index) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `rail-card${index === 0 ? " is-active" : ""}`;
     button.setAttribute("aria-label", card.name);
     const image = document.createElement("img");
-    image.src = card.src;
     image.alt = card.name;
-    image.addEventListener("error", () => {
-      if (image.src !== card.fallbackSrc) image.src = card.fallbackSrc;
-    }, { once: true });
+    imageReadiness.push(new Promise((resolve) => {
+      let fallbackAttempted = card.src === card.fallbackSrc;
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        const decoded = typeof image.decode === "function" ? image.decode().catch(() => undefined) : Promise.resolve();
+        decoded.finally(resolve);
+      };
+      image.addEventListener("load", settle, { once: true });
+      image.addEventListener("error", () => {
+        if (!fallbackAttempted && card.fallbackSrc) {
+          fallbackAttempted = true;
+          image.src = card.fallbackSrc;
+          return;
+        }
+        settle();
+      });
+      image.src = card.src;
+    }));
     button.append(image);
     button.addEventListener("click", () => selectCard(index));
     cardRail.append(button);
   });
+  Promise.all(imageReadiness).then(() => {
+    cardRailAssetsReady = true;
+    updateCardAssetReadiness();
+  });
+}
+
+
+function areCardAssetsReady() {
+  return cardRailAssetsReady && cardWebGLAssetsReady;
+}
+
+
+function updateCardAssetReadiness() {
+  inspection.dataset.cardAssetsReady = String(areCardAssetsReady());
 }
 
 
@@ -375,6 +411,10 @@ function showBoxFeedback(message, tone = "active", duration = 1700) {
   boxSequenceHint.classList.remove("is-feedback");
   void boxSequenceHint.offsetWidth;
   boxSequenceHint.classList.add("is-feedback");
+  if (duration <= 0) {
+    feedbackResetTimer = null;
+    return;
+  }
   feedbackResetTimer = window.setTimeout(() => {
     boxSequenceHint.classList.remove("is-feedback");
     delete boxSequenceHint.dataset.feedback;
@@ -403,6 +443,7 @@ function resetWoodlandInteraction() {
   artifactBrightnessCurrent = 1;
   cardsModeTab.disabled = true;
   cardsModeTab.title = "依序單擊說明書與內卡盒，再單擊抽牌";
+  inspection.removeAttribute("aria-busy");
   inspection.classList.remove("is-inner-box-ready", "is-card-summoning", "is-card-focus", "is-card-back", "is-card-side");
   delete inspection.dataset.woodlandPhase;
 }
@@ -442,6 +483,7 @@ function leaveInspection() {
   inspectionVisible = false;
   inspection.classList.remove("is-visible", "is-summoning");
   inspection.classList.remove("is-card-summoning", "is-card-focus", "is-card-back", "is-card-side");
+  inspection.removeAttribute("aria-busy");
   inspection.setAttribute("aria-hidden", "true");
   controls.autoRotate = false;
 }
@@ -534,6 +576,7 @@ function setBoxOpen(value, { sound = false } = {}) {
       woodlandPhase = WOODLAND_PHASE.CLOSED;
       cardsModeTab.disabled = true;
       cardsModeTab.title = "依序單擊說明書與內卡盒，再單擊抽牌";
+      inspection.removeAttribute("aria-busy");
       inspection.classList.remove("is-inner-box-ready", "is-card-summoning", "is-card-focus", "is-card-back", "is-card-side");
       inspection.dataset.woodlandPhase = woodlandPhase;
     } else if (woodlandPhase === WOODLAND_PHASE.CLOSED) {
@@ -1198,6 +1241,8 @@ const cardMeshes = CARDS.map((card, index) => {
   cardsGroup.add(group);
   return group;
 });
+cardWebGLAssetsReady = cardMeshes.length === CARDS.length;
+updateCardAssetReadiness();
 
 function createFocusMaskTexture() {
   const canvas = document.createElement("canvas");
@@ -1439,9 +1484,11 @@ function beginCardSummoning() {
   cardsModeTab.title = "正在凝聚牌面…";
   inspection.classList.remove("is-inner-box-ready");
   inspection.classList.add("is-card-summoning");
+  inspection.setAttribute("aria-busy", "true");
   inspection.dataset.woodlandPhase = woodlandPhase;
   playInvocationSound();
   triggerMysticEffect(0.48);
+  showBoxFeedback("正在載入 78 張牌面，召喚光線將保持至完成", "waiting", 0);
 }
 
 function completeCardSummoning() {
@@ -1453,7 +1500,9 @@ function completeCardSummoning() {
   cardsModeTab.disabled = false;
   cardsModeTab.title = "檢視完整七十八張牌面";
   inspection.classList.remove("is-card-summoning");
+  inspection.removeAttribute("aria-busy");
   selectCard(randomIndex, false);
+  showBoxFeedback("78 張牌面已載入完成", "active", 1700);
   setMode("cards", false);
   inspection.dataset.woodlandPhase = WOODLAND_PHASE.CARDS;
   playCardSlide(randomIndex >= CARDS.length / 2 ? 1 : -1);
@@ -1642,8 +1691,10 @@ function updateInnerBoxEffects(dt, time, now) {
     return;
   }
 
-  cardSummonProgress = THREE.MathUtils.clamp((now - cardSummonStartedAt) / 2000, 0, 1);
-  const spread = cardSummonProgress * cardSummonProgress * (3 - 2 * cardSummonProgress);
+  const summonElapsed = now - cardSummonStartedAt;
+  const rayExpansion = THREE.MathUtils.clamp(summonElapsed / CARD_SUMMON_RAY_EXPAND_MS, 0, 1);
+  cardSummonProgress = THREE.MathUtils.clamp(summonElapsed / CARD_SUMMON_MIN_DURATION_MS, 0, 1);
+  const spread = rayExpansion * rayExpansion * (3 - 2 * rayExpansion);
   summonRaySeeds.forEach((seed, index) => {
     const local = THREE.MathUtils.clamp((spread - seed.delay) / (1 - seed.delay), 0, 1);
     const innerRadius = 0.2 + local * 0.2;
@@ -1657,10 +1708,13 @@ function updateInnerBoxEffects(dt, time, now) {
     summonRayPositions[offset + 5] = 0;
   });
   summonRayGeometry.attributes.position.needsUpdate = true;
-  summonRayMaterial.opacity = Math.sin(cardSummonProgress * Math.PI) * 0.92;
+  const heldRayPulse = 0.76 + Math.sin(time * 8.5) * 0.16;
+  summonRayMaterial.opacity = rayExpansion < 1
+    ? Math.sin(rayExpansion * Math.PI * 0.5) * 0.92
+    : heldRayPulse;
   innerBoxEdgeMaterial.opacity = Math.min(1, 0.72 + Math.sin(time * 14) * 0.2);
   innerBoxGlowLight.intensity = 3.2 + Math.sin(time * 16) * 0.55;
-  if (cardSummonProgress >= 1) completeCardSummoning();
+  if (summonElapsed >= CARD_SUMMON_MIN_DURATION_MS && areCardAssetsReady()) completeCardSummoning();
 }
 
 
