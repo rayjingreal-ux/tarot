@@ -2,3 +2,5 @@
 Thumbs.db
 *.log
 .local-server*
+work/
+__pycache__/

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#160d10">
+  <title>Red Visions Tarot｜78 張卡牌修正工作台</title>
+  <link rel="stylesheet" href="./styles.css?v=20260824-redvisions-01">
+</head>
+<body>
+  <header class="hero">
+    <div class="hero__copy">
+      <p class="eyebrow">RED VISIONS TAROT</p>
+      <h1>78 張卡牌修正工作台</h1>
+      <p class="lede">逐張檢查透視拉正、布面移除、裁切比例與牌面完整度。這個頁面獨立保留，不會改動既有兩副牌。</p>
+    </div>
+    <button class="back-preview" id="backPreview" type="button" aria-label="放大檢視卡牌背面">
+      <img src="../assets/redvisions/card-back.webp?v=20260824-redvisions-01" alt="Red Visions 卡牌背面">
+      <span>卡牌背面</span>
+    </button>
+  </header>
+
+  <main>
+    <section class="status-panel" aria-label="校正狀態">
+      <div class="stat"><strong id="totalCount">78</strong><span>應有張數</span></div>
+      <div class="stat"><strong id="loadedCount">0</strong><span>成功載入</span></div>
+      <div class="stat"><strong id="errorCount">0</strong><span>載入失敗</span></div>
+      <div class="stat"><strong>4:7</strong><span>統一比例</span></div>
+      <p class="status-message" id="statusMessage" role="status">正在核對 78 張卡牌…</p>
+    </section>
+
+    <nav class="filters" aria-label="卡牌分類">
+      <button type="button" class="filter is-active" data-filter="all">全部 <span>78</span></button>
+      <button type="button" class="filter" data-filter="major">大阿爾克那 <span>22</span></button>
+      <button type="button" class="filter" data-filter="wands">權杖 <span>14</span></button>
+      <button type="button" class="filter" data-filter="cups">聖杯 <span>14</span></button>
+      <button type="button" class="filter" data-filter="swords">寶劍 <span>14</span></button>
+      <button type="button" class="filter" data-filter="coins">錢幣 <span>14</span></button>
+    </nav>
+
+    <section class="card-grid" id="cardGrid" aria-live="polite"></section>
+  </main>
+
+  <dialog class="viewer" id="viewer">
+    <button class="viewer__close" id="viewerClose" type="button" aria-label="關閉">×</button>
+    <figure>
+      <img id="viewerImage" alt="">
+      <figcaption>
+        <span id="viewerIndex"></span>
+        <strong id="viewerTitle"></strong>
+        <span id="viewerSubtitle"></span>
+      </figcaption>
+    </figure>
+  </dialog>
+
+  <template id="cardTemplate">
+    <article class="card-item">
+      <button class="card-button" type="button">
+        <span class="card-frame"><img loading="lazy" decoding="async" alt=""></span>
+        <span class="card-meta">
+          <span class="card-number"></span>
+          <span class="card-names"><strong></strong><small></small></span>
+          <span class="card-state">待載入</span>
+        </span>
+      </button>
+    </article>
+  </template>
+
+  <script src="./app.js?v=20260824-redvisions-01" defer></script>
+</body>
+</html>
