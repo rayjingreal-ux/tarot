@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "decks": [
+    {
+      "id": "unveiled",
+      "number": "01",
+      "header": "THE UNVEILED TAROT",
+      "kicker": "DREAM, SYMBOL & REVELATION",
+      "title": "THE UNVEILED<br /><em>Tarot</em>",
+      "description": "硬紙盒外套與可滑出的內抽屜，以五張實拍照片重建並納入同一套召喚舞台。",
+      "structure": "SLIPCASE + DRAWER",
+      "cards": "尚未提供獨立牌面",
+      "basis": "5 PHOTOS",
+      "hasCards": false,
+      "openLabel": "拉出內盒",
+      "closeLabel": "收回內盒",
+      "textureRoot": "./unveiled/textures/",
+      "textureFiles": [
+        "front.jpg",
+        "back.jpg",
+        "left.jpg",
+        "right.jpg",
+        "top.jpg",
+        "drawer.jpg"
+      ]
+    },
+    {
+      "id": "woodland",
+      "number": "02",
+      "header": "WOODLAND FAIRY TALE TAROT",
+      "kicker": "MAGIC, FOLKLORE & PLANTS",
+      "title": "WOODLAND<br /><em>Fairy Tale</em> TAROT",
+      "description": "磁吸書型外盒、可取出的說明書、內卡盒與完整七十八張牌面，依照 411495–411497 的拆件狀態重建。",
+      "structure": "OUTER BOX + GUIDE + INNER BOX",
+      "cards": "LXXVIII / LXXVIII",
+      "basis": "29 PHOTOS",
+      "hasCards": true,
+      "openLabel": "打開磁吸書型盒",
+      "closeLabel": "闔上磁吸書型盒",
+      "cardManifest": "./cards-manifest.json",
+      "textureRoot": "./woodland/textures/",
+      "textureVersion": "20260814-10",
+      "textureFiles": [
+        "outer-front.jpg",
+        "outer-back.jpg",
+        "outer-inside.jpg",
+        "outer-left.jpg",
+        "outer-right.jpg",
+        "outer-top.jpg",
+        "outer-bottom.jpg",
+        "inner-front.jpg",
+        "inner-back.jpg",
+        "inner-front-upright.jpg",
+        "inner-back-upright.jpg",
+        "inner-left.jpg",
+        "inner-right.jpg",
+        "inner-top.jpg",
+        "inner-bottom.jpg",
+        "guidebook-front.png",
+        "guidebook-back.png",
+        "card-back.png"
+      ],
+      "cardBack": "card-back.png"
+    }
+  ]
+}

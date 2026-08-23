@@ -17,14 +17,15 @@ const MAJOR_ARCANA = [
 ];
 const MINOR_RANKS = ["ACE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN", "PAGE", "KNIGHT", "QUEEN", "KING"];
 const MINOR_SUITS = ["WANDS", "CUPS", "SWORDS", "PENTACLES"];
-const MANIFEST_CANDIDATES = [
+const DECK_INDEX_URL = "./assets/decks-manifest.json";
+const LEGACY_CARD_MANIFEST_CANDIDATES = [
   "./assets/woodland/cards-manifest.json",
   "./assets/woodland/cards/cards-manifest.json",
   "./assets/woodland/textures/cards-manifest.json",
   "./assets/cards-manifest.json",
   "./cards-manifest.json",
 ];
-const CARD_ASSET_VERSION = "github-pages-20260814-01";
+const CARD_ASSET_VERSION = "manifest-pool-20260823-01";
 
 function escapeSvgText(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -97,23 +98,29 @@ function normalizeCardCatalog(payload, manifestUrl = null) {
     .map(({ card }, index) => {
       const fallback = fallbackCards[index];
       const file = card.file ?? card.filename ?? card.path ?? card.front_file ?? card.front ?? card.texturePath ?? card.texture ?? card.image?.front ?? card.image ?? null;
+      const thumbnailFile = card.thumbnail ?? card.thumb ?? card.preview ?? card.image?.thumbnail ?? null;
       const normalized = {
         id: String(card.id ?? card.slug ?? fallback.id),
         numeral: String(card.numeral ?? card.roman ?? card.arcana ?? card.number ?? card.rank ?? fallback.numeral),
         name: String(card.name ?? card.title ?? card.name_en ?? card.label ?? fallback.name).toUpperCase(),
         file: typeof file === "string" ? file : null,
+        thumbnailFile: typeof thumbnailFile === "string" ? thumbnailFile : null,
       };
       normalized.src = versionCardSource(resolveCardSource(normalized.file, manifestUrl, basePath)) ?? createFallbackCardSource(normalized);
+      normalized.thumbnailSrc = versionCardSource(resolveCardSource(normalized.thumbnailFile, manifestUrl, basePath)) ?? normalized.src;
       normalized.fallbackSrc = createFallbackCardSource(normalized);
       return normalized;
     });
 }
 
-async function loadCardCatalog() {
+async function loadCardCatalog(deckKey) {
+  const deck = DECKS[deckKey];
+  if (!deck?.hasCards) return [];
   const injected = normalizeCardCatalog(globalThis.WOODLAND_CARDS_MANIFEST);
   if (injected) return injected;
   if (window.location.protocol !== "file:") {
-    for (const candidate of MANIFEST_CANDIDATES) {
+    const candidates = [deck.cardManifest, ...LEGACY_CARD_MANIFEST_CANDIDATES].filter(Boolean);
+    for (const candidate of [...new Set(candidates)]) {
       try {
         const response = await fetch(candidate, { cache: "no-store" });
         if (!response.ok) continue;
@@ -136,9 +143,7 @@ async function loadCardCatalog() {
   return fallback;
 }
 
-const CARDS = await loadCardCatalog();
-
-const DECKS = {
+const DEFAULT_DECKS = {
   unveiled: {
     number: "01",
     header: "THE UNVEILED TAROT",
@@ -151,6 +156,8 @@ const DECKS = {
     hasCards: false,
     openLabel: "拉出內盒",
     closeLabel: "收回內盒",
+    textureRoot: "./assets/unveiled/textures/",
+    textureFiles: ["front.jpg", "back.jpg", "left.jpg", "right.jpg", "top.jpg", "drawer.jpg"],
   },
   woodland: {
     number: "02",
@@ -164,8 +171,71 @@ const DECKS = {
     hasCards: true,
     openLabel: "打開磁吸書型盒",
     closeLabel: "闔上磁吸書型盒",
+    cardManifest: "./assets/cards-manifest.json",
+    textureRoot: "./assets/woodland/textures/",
+    textureVersion: "20260814-10",
+    textureFiles: [
+      "outer-front.jpg", "outer-back.jpg", "outer-inside.jpg", "outer-left.jpg", "outer-right.jpg", "outer-top.jpg", "outer-bottom.jpg",
+      "inner-front.jpg", "inner-back.jpg", "inner-front-upright.jpg", "inner-back-upright.jpg", "inner-left.jpg", "inner-right.jpg", "inner-top.jpg", "inner-bottom.jpg",
+      "guidebook-front.png", "guidebook-back.png", "card-back.png",
+    ],
+    cardBack: "card-back.png",
   },
 };
+
+function resolveManifestUrl(value, manifestUrl = null) {
+  if (!value) return null;
+  return new URL(value, manifestUrl ?? window.location.href).href;
+}
+
+function normalizeDeckIndex(payload, manifestUrl = null) {
+  const source = payload?.decks ?? payload;
+  const entries = Array.isArray(source)
+    ? source.map((deck) => [deck.id, deck])
+    : Object.entries(source ?? {});
+  const normalized = {};
+  entries.forEach(([id, deck]) => {
+    if (!id || !deck || typeof deck !== "object") return;
+    const fallback = DEFAULT_DECKS[id] ?? {};
+    const merged = { ...fallback, ...deck, id };
+    merged.cardManifest = resolveManifestUrl(merged.cardManifest, manifestUrl);
+    merged.textureRoot = resolveManifestUrl(merged.textureRoot, manifestUrl);
+    merged.textureFiles = Array.isArray(merged.textureFiles) ? merged.textureFiles : fallback.textureFiles ?? [];
+    normalized[id] = merged;
+  });
+  Object.entries(DEFAULT_DECKS).forEach(([id, deck]) => {
+    if (normalized[id]) return;
+    normalized[id] = {
+      ...deck,
+      id,
+      cardManifest: resolveManifestUrl(deck.cardManifest),
+      textureRoot: resolveManifestUrl(deck.textureRoot),
+    };
+  });
+  return normalized;
+}
+
+async function loadDeckIndex() {
+  const injected = globalThis.ARCANA_DECKS_MANIFEST;
+  if (injected) return normalizeDeckIndex(injected);
+  if (window.location.protocol !== "file:") {
+    try {
+      const response = await fetch(DECK_INDEX_URL, { cache: "no-store" });
+      if (response.ok) {
+        const decks = normalizeDeckIndex(await response.json(), response.url);
+        console.info(`[arcana] loaded ${Object.keys(decks).length} deck manifests from ${response.url}`);
+        return decks;
+      }
+    } catch (error) {
+      console.warn(`[arcana] unable to load ${DECK_INDEX_URL}`, error);
+    }
+  }
+  console.info("[arcana] using the embedded deck index fallback");
+  return normalizeDeckIndex(DEFAULT_DECKS);
+}
+
+const DECKS = await loadDeckIndex();
+let CARDS = [];
 
 const archive = document.querySelector("#archive");
 const cabinet = document.querySelector("#cabinet-scene");
@@ -230,10 +300,16 @@ let cardSummonStartedAt = 0;
 let cardSummonProgress = 0;
 let cardRailAssetsReady = false;
 let cardWebGLAssetsReady = false;
+let cardCatalogDeckKey = null;
+let cardCatalogLoadPromise = null;
+let cardRailObserver = null;
+let pendingSummonCardIndex = null;
+let cardSummonAssetsReady = false;
 const CARD_SUMMON_RAY_EXPAND_MS = 2200;
 const CARD_SUMMON_MIN_DURATION_MS = 4200;
 const CARD_REDRAW_DURATION_MS = 3000;
 const CARD_RETURN_BEAM_DURATION_MS = 1500;
+const CARD_TEXTURE_POOL_LIMIT = 5;
 const SCENE_TAP_MAX_DURATION_MS = 520;
 const SCENE_TAP_MAX_MOVE_PX = 9;
 let cardRedrawStartedAt = 0;
@@ -258,7 +334,7 @@ const candleWash = document.querySelector(".candle-wash");
 
 buildDomParticles(document.querySelector("#dust"), 52, false);
 buildDomParticles(document.querySelector("#inspection-particles"), 82, true);
-buildCardRail();
+cardCatalogToggle.disabled = true;
 
 document.querySelector("#approach-button").addEventListener("click", () => {
   archive.dataset.phase = "choose";
@@ -490,9 +566,10 @@ function buildDomParticles(container, count, bright) {
 
 
 function buildCardRail() {
+  cardRailObserver?.disconnect();
+  cardRailObserver = null;
   cardRail.replaceChildren();
-  cardRailAssetsReady = false;
-  const imageReadiness = [];
+  cardRailAssetsReady = CARDS.length > 0;
   CARDS.forEach((card, index) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -500,39 +577,56 @@ function buildCardRail() {
     button.setAttribute("aria-label", card.name);
     const image = document.createElement("img");
     image.alt = card.name;
-    imageReadiness.push(new Promise((resolve) => {
-      let fallbackAttempted = card.src === card.fallbackSrc;
-      let settled = false;
-      const settle = () => {
-        if (settled) return;
-        settled = true;
-        const decoded = typeof image.decode === "function" ? image.decode().catch(() => undefined) : Promise.resolve();
-        decoded.finally(resolve);
-      };
-      image.addEventListener("load", settle, { once: true });
-      image.addEventListener("error", () => {
-        if (!fallbackAttempted && card.fallbackSrc) {
-          fallbackAttempted = true;
-          image.src = card.fallbackSrc;
-          return;
-        }
-        settle();
-      });
-      image.src = card.src;
-    }));
+    image.width = 192;
+    image.height = 336;
+    image.loading = "lazy";
+    image.decoding = "async";
+    image.dataset.src = card.thumbnailSrc;
+    image.dataset.fallbackSrc = card.fallbackSrc;
+    image.addEventListener("load", () => button.classList.add("is-image-ready"));
+    image.addEventListener("error", () => {
+      if (image.dataset.fallbackAttempted !== "true") {
+        image.dataset.fallbackAttempted = "true";
+        image.src = card.fallbackSrc;
+      }
+      else button.classList.add("is-image-ready");
+    });
     button.append(image);
     button.addEventListener("click", () => selectCard(index));
     cardRail.append(button);
   });
-  Promise.all(imageReadiness).then(() => {
-    cardRailAssetsReady = true;
-    updateCardAssetReadiness();
+  cardCatalogToggle.disabled = !cardRailAssetsReady;
+  updateCardAssetReadiness();
+}
+
+function loadCardRailImage(image) {
+  if (!(image instanceof HTMLImageElement) || image.src || !image.dataset.src) return;
+  image.src = image.dataset.src;
+}
+
+function beginLazyCardRailLoading() {
+  const images = Array.from(cardRail.querySelectorAll("img[data-src]"));
+  if (!("IntersectionObserver" in window)) {
+    images.forEach(loadCardRailImage);
+    return;
+  }
+  if (!cardRailObserver) {
+    cardRailObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        loadCardRailImage(entry.target);
+        cardRailObserver.unobserve(entry.target);
+      });
+    }, { root: cardCatalogPanel, rootMargin: "280px 0px" });
+  }
+  images.forEach((image) => {
+    if (!image.src) cardRailObserver.observe(image);
   });
 }
 
 
 function areCardAssetsReady() {
-  return cardRailAssetsReady && cardWebGLAssetsReady;
+  return cardRailAssetsReady && cardWebGLAssetsReady && cardSummonAssetsReady;
 }
 
 
@@ -587,6 +681,8 @@ function resetWoodlandInteraction() {
   cardRevealComplete = false;
   cardSummonStartedAt = 0;
   cardSummonProgress = 0;
+  pendingSummonCardIndex = null;
+  cardSummonAssetsReady = false;
   innerBoxGlowTarget = 0;
   innerBoxGlowCurrent = 0;
   guidebookExtractedTarget = 0;
@@ -610,6 +706,7 @@ function resetWoodlandInteraction() {
 function enterInspection(deckKey) {
   if (!DECKS[deckKey]) return;
   activeDeckKey = deckKey;
+  if (DECKS[deckKey].hasCards) void ensureDeckCardExperience(deckKey);
   updateArtifactCopy();
   if (deckKey === "woodland") {
     cardsModeTab.disabled = true;
@@ -701,9 +798,11 @@ function setMode(mode, userInitiated = false) {
 
 
 function setCardCatalogOpen(open) {
+  if (open && !cardRailAssetsReady) return;
   cardCatalogToggle.setAttribute("aria-expanded", String(open));
   cardCatalogPanel.hidden = !open;
   cardControls.classList.toggle("is-catalog-open", open);
+  if (open) requestAnimationFrame(beginLazyCardRailLoading);
 }
 
 
@@ -797,13 +896,14 @@ function setBoxOpen(value, { sound = false } = {}) {
 
 
 function selectCard(index, effect = true) {
+  if (!CARDS.length) return;
   const previousCard = selectedCard;
   selectedCard = (index + CARDS.length) % CARDS.length;
   selectedFlipped = true;
   inspection.dataset.cardFace = "back";
   flipCardButton.querySelector("span").textContent = "翻至正面";
   CARDS.forEach((card, cardNumber) => {
-    cardRail.children[cardNumber].classList.toggle("is-active", cardNumber === selectedCard);
+    cardRail.children[cardNumber]?.classList.toggle("is-active", cardNumber === selectedCard);
   });
   cardIndex.textContent = `ARCANA ${CARDS[selectedCard].numeral}`;
   cardName.textContent = CARDS[selectedCard].name;
@@ -812,11 +912,24 @@ function selectCard(index, effect = true) {
     const rawDirection = index - previousCard;
     playCardSlide(rawDirection === 0 ? 0 : Math.sign(rawDirection));
   }
+  requestCardTextureWindow(selectedCard);
 }
 
 
-function flipSelectedCard() {
+async function flipSelectedCard() {
   if (activeMode !== "cards") return;
+  const revealingFront = selectedFlipped;
+  if (revealingFront && !isCardTextureReady(selectedCard)) {
+    const requestedIndex = selectedCard;
+    flipCardButton.disabled = true;
+    inspection.dataset.cardTextureLoading = "true";
+    cardName.textContent = "正在載入牌面…";
+    await ensureCardTexture(requestedIndex);
+    delete inspection.dataset.cardTextureLoading;
+    flipCardButton.disabled = false;
+    if (requestedIndex !== selectedCard || activeMode !== "cards") return;
+    cardName.textContent = CARDS[selectedCard].name;
+  }
   selectedFlipped = !selectedFlipped;
   inspection.dataset.cardFace = selectedFlipped ? "back" : "front";
   flipCardButton.querySelector("span").textContent = selectedFlipped ? "翻至正面" : "翻至背面";
@@ -1042,14 +1155,17 @@ pooledLights[2].light.position.set(1.5, -0.5, 1.3);
 pooledLights.forEach((entry) => scene.add(entry.light));
 
 const textureLoader = new THREE.TextureLoader();
-const staticTextureRequests = [
-  ...[
-    "outer-front.jpg", "outer-back.jpg", "outer-inside.jpg", "outer-left.jpg", "outer-right.jpg", "outer-top.jpg", "outer-bottom.jpg",
-    "inner-front.jpg", "inner-back.jpg", "inner-front-upright.jpg", "inner-back-upright.jpg", "inner-left.jpg", "inner-right.jpg", "inner-top.jpg", "inner-bottom.jpg", "guidebook-front.png", "guidebook-back.png", "card-back.png",
-  ].map((name) => [`woodland:${name}`, `./assets/woodland/textures/${name}?v=20260814-10`]),
-  ...["front.jpg", "back.jpg", "left.jpg", "right.jpg", "top.jpg", "drawer.jpg"]
-    .map((name) => [`unveiled:${name}`, `./assets/unveiled/textures/${name}`]),
-];
+
+function getDeckTextureUrl(deckKey, name) {
+  const deck = DECKS[deckKey];
+  const url = new URL(name, deck.textureRoot);
+  if (deck.textureVersion) url.searchParams.set("v", deck.textureVersion);
+  return url.href;
+}
+
+const staticTextureRequests = Object.entries(DECKS).flatMap(([deckKey, deck]) => (
+  deck.textureFiles.map((name) => [`${deckKey}:${name}`, getDeckTextureUrl(deckKey, name)])
+));
 
 async function loadColorTexture(path, fallbackPath = null) {
   let texture;
@@ -1066,12 +1182,7 @@ async function loadColorTexture(path, fallbackPath = null) {
 }
 
 const staticTextureEntries = await Promise.all(staticTextureRequests.map(async ([key, path]) => [key, await loadColorTexture(path)]));
-const cardTextureEntries = await Promise.all(CARDS.map(async (card, index) => [
-  `woodland:card:${index}`,
-  await loadColorTexture(card.src, card.fallbackSrc),
-]));
-const textureEntries = [...staticTextureEntries, ...cardTextureEntries];
-const textures = Object.fromEntries(textureEntries);
+const textures = Object.fromEntries(staticTextureEntries);
 
 function createPaperBumpTexture() {
   const canvas = document.createElement("canvas");
@@ -1464,6 +1575,7 @@ function createRoundedCard(faceTexture, backTexture, index) {
   backReflection.position.z = -thickness / 2 - 0.0025;
   backReflection.renderOrder = 4;
   group.add(backReflection);
+  group.userData.frontMaterial = faceMaterial;
   group.userData.reflectionMaterials = [frontReflectionMaterial, backReflectionMaterial];
   return group;
 }
@@ -1473,16 +1585,153 @@ const cardsGroup = new THREE.Group();
 cardsGroup.name = "Rounded 1 mm floating cards";
 cardsGroup.visible = false;
 scene.add(cardsGroup);
-const cardMeshes = CARDS.map((card, index) => {
-  const group = createRoundedCard(textures[`woodland:card:${index}`], textures["woodland:card-back.png"], index);
-  group.position.set(0, 0, 0.35 + index * 0.01);
-  cardsGroup.add(group);
-  return group;
-});
-cardWebGLAssetsReady = cardMeshes.length === CARDS.length;
-updateCardAssetReadiness();
+let cardMeshes = [];
+const cardTexturePool = new Map();
+const cardTexturePromises = new Map();
+let cardTextureUseClock = 0;
+let cardTextureGeneration = 0;
 
-const returnBeamPositions = new Float32Array(CARDS.length * 6);
+function isCardTextureReady(index) {
+  return cardTexturePool.has(index);
+}
+
+function assignCardFaceTexture(index, texture) {
+  const material = cardMeshes[index]?.userData.frontMaterial;
+  if (!material || !texture) return;
+  material.map = texture;
+  material.needsUpdate = true;
+}
+
+function protectedCardTextureIndices(centerIndex) {
+  const protectedIndices = new Set();
+  if (!CARDS.length) return protectedIndices;
+  for (let offset = -2; offset <= 2; offset += 1) {
+    protectedIndices.add((centerIndex + offset + CARDS.length) % CARDS.length);
+  }
+  return protectedIndices;
+}
+
+function trimCardTexturePool(centerIndex = selectedCard) {
+  const protectedIndices = protectedCardTextureIndices(centerIndex);
+  while (cardTexturePool.size > CARD_TEXTURE_POOL_LIMIT) {
+    const candidate = [...cardTexturePool.entries()]
+      .filter(([index]) => !protectedIndices.has(index))
+      .sort((a, b) => a[1].lastUsed - b[1].lastUsed)[0];
+    if (!candidate) break;
+    const [index, entry] = candidate;
+    cardTexturePool.delete(index);
+    assignCardFaceTexture(index, textures[`${cardCatalogDeckKey}:${DECKS[cardCatalogDeckKey]?.cardBack}`]);
+    entry.texture.dispose();
+  }
+  inspection.dataset.texturePool = `${cardTexturePool.size}/${CARD_TEXTURE_POOL_LIMIT}`;
+}
+
+async function ensureCardTexture(index) {
+  if (!CARDS.length || index < 0 || index >= CARDS.length) return null;
+  const cached = cardTexturePool.get(index);
+  if (cached) {
+    cached.lastUsed = ++cardTextureUseClock;
+    assignCardFaceTexture(index, cached.texture);
+    return cached.texture;
+  }
+  if (cardTexturePromises.has(index)) return cardTexturePromises.get(index);
+  const deckKeyAtRequest = cardCatalogDeckKey;
+  const generationAtRequest = cardTextureGeneration;
+  const request = loadColorTexture(CARDS[index].src, CARDS[index].fallbackSrc)
+    .then((texture) => {
+      if (deckKeyAtRequest !== cardCatalogDeckKey || generationAtRequest !== cardTextureGeneration) {
+        texture.dispose();
+        return null;
+      }
+      cardTexturePool.set(index, { texture, lastUsed: ++cardTextureUseClock });
+      assignCardFaceTexture(index, texture);
+      trimCardTexturePool(index);
+      return texture;
+    })
+    .catch((error) => {
+      console.warn(`[arcana] unable to prepare card texture ${index}`, error);
+      return null;
+    })
+    .finally(() => {
+      if (cardTexturePromises.get(index) === request) cardTexturePromises.delete(index);
+    });
+  cardTexturePromises.set(index, request);
+  return request;
+}
+
+function requestCardTextureWindow(centerIndex) {
+  if (!CARDS.length) return;
+  void ensureCardTexture(centerIndex);
+  const neighbours = [-1, 1, -2, 2].map((offset) => (centerIndex + offset + CARDS.length) % CARDS.length);
+  void Promise.allSettled(neighbours.map((index) => ensureCardTexture(index))).then(() => trimCardTexturePool(centerIndex));
+}
+
+function clearCardTexturePool() {
+  cardTextureGeneration += 1;
+  cardTexturePool.forEach((entry) => entry.texture.dispose());
+  cardTexturePool.clear();
+  cardTexturePromises.clear();
+  inspection.dataset.texturePool = `0/${CARD_TEXTURE_POOL_LIMIT}`;
+}
+
+function disposeCardMeshes() {
+  cardsGroup.traverse((object) => {
+    object.geometry?.dispose?.();
+    const materials = Array.isArray(object.material) ? object.material : object.material ? [object.material] : [];
+    materials.forEach((material) => {
+      if (material !== cardEdgeMaterial) material.dispose?.();
+    });
+  });
+  cardsGroup.clear();
+  cardMeshes = [];
+}
+
+function resizeReturnBeamBuffer(cardCount) {
+  returnBeamPositions = new Float32Array(cardCount * 6);
+  returnBeamGeometry.setAttribute("position", new THREE.BufferAttribute(returnBeamPositions, 3));
+}
+
+function initializeCardMeshes(deckKey) {
+  clearCardTexturePool();
+  disposeCardMeshes();
+  const deck = DECKS[deckKey];
+  const backTexture = textures[`${deckKey}:${deck.cardBack}`];
+  cardMeshes = CARDS.map((card, index) => {
+    const group = createRoundedCard(backTexture, backTexture, index);
+    group.position.set(0, 0, 0.35 + index * 0.01);
+    cardsGroup.add(group);
+    return group;
+  });
+  resizeReturnBeamBuffer(CARDS.length);
+  cardWebGLAssetsReady = cardMeshes.length === CARDS.length && cardMeshes.length > 0;
+  updateCardAssetReadiness();
+}
+
+async function ensureDeckCardExperience(deckKey) {
+  if (!DECKS[deckKey]?.hasCards) return [];
+  if (cardCatalogDeckKey === deckKey && cardWebGLAssetsReady) return CARDS;
+  if (cardCatalogLoadPromise) return cardCatalogLoadPromise;
+  cardCatalogLoadPromise = (async () => {
+    const catalog = await loadCardCatalog(deckKey);
+    if (!catalog.length) throw new Error(`No cards available for ${deckKey}`);
+    CARDS = catalog;
+    selectedCard = Math.min(selectedCard, CARDS.length - 1);
+    cardCatalogDeckKey = deckKey;
+    buildCardRail();
+    initializeCardMeshes(deckKey);
+    inspection.dataset.cardManifest = deckKey;
+    return CARDS;
+  })().catch((error) => {
+    console.error("[arcana] unable to initialize deck cards", error);
+    showBoxFeedback("牌組清單載入失敗，請重新整理後再試", "muted", 3200);
+    return [];
+  }).finally(() => {
+    cardCatalogLoadPromise = null;
+  });
+  return cardCatalogLoadPromise;
+}
+
+let returnBeamPositions = new Float32Array(0);
 const returnBeamGeometry = new THREE.BufferGeometry();
 returnBeamGeometry.setAttribute("position", new THREE.BufferAttribute(returnBeamPositions, 3));
 returnBeamMaterial = new THREE.LineBasicMaterial({
@@ -1734,6 +1983,8 @@ function beginCardSummoning() {
   woodlandPhase = WOODLAND_PHASE.SUMMONING;
   cardSummonStartedAt = performance.now();
   cardSummonProgress = 0;
+  pendingSummonCardIndex = null;
+  cardSummonAssetsReady = false;
   innerBoxGlowTarget = 1.35;
   cardsModeTab.disabled = true;
   cardsModeTab.title = "正在凝聚牌面…";
@@ -1743,12 +1994,23 @@ function beginCardSummoning() {
   inspection.dataset.woodlandPhase = woodlandPhase;
   playInvocationSound();
   triggerMysticEffect(0.48);
-  showBoxFeedback("正在載入 78 張牌面，召喚光線將保持至完成", "waiting", 0);
+  showBoxFeedback("正在讀取牌組清單與首張牌面，召喚光線將保持至完成", "waiting", 0);
+  void prepareCardSummoningAssets();
+}
+
+async function prepareCardSummoningAssets() {
+  const cards = await ensureDeckCardExperience("woodland");
+  if (woodlandPhase !== WOODLAND_PHASE.SUMMONING || !cards.length) return;
+  pendingSummonCardIndex = Math.floor(Math.random() * cards.length);
+  await ensureCardTexture(pendingSummonCardIndex);
+  if (woodlandPhase !== WOODLAND_PHASE.SUMMONING) return;
+  cardSummonAssetsReady = true;
+  updateCardAssetReadiness();
 }
 
 function completeCardSummoning() {
   if (woodlandPhase !== WOODLAND_PHASE.SUMMONING) return;
-  const randomIndex = Math.floor(Math.random() * CARDS.length);
+  const randomIndex = pendingSummonCardIndex ?? Math.floor(Math.random() * CARDS.length);
   cardSummonStartedAt = 0;
   cardSummonProgress = 1;
   cardRevealComplete = true;
@@ -1757,7 +2019,7 @@ function completeCardSummoning() {
   inspection.classList.remove("is-card-summoning");
   inspection.removeAttribute("aria-busy");
   selectCard(randomIndex, false);
-  showBoxFeedback("78 張牌面已載入完成", "active", 1700);
+  showBoxFeedback("牌組已就緒，其餘牌面將在需要時載入", "active", 2100);
   setMode("cards", false);
   inspection.dataset.woodlandPhase = WOODLAND_PHASE.CARDS;
   playCardSlide(randomIndex >= CARDS.length / 2 ? 1 : -1);
