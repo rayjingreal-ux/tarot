@@ -169,6 +169,8 @@ const DECKS = {
 
 const archive = document.querySelector("#archive");
 const cabinet = document.querySelector("#cabinet-scene");
+const sceneImage = cabinet.querySelector(".scene-image");
+const sceneResetButton = document.querySelector("#scene-reset-view");
 const inspection = document.querySelector("#inspection");
 const stage = document.querySelector("#three-stage");
 const loading = document.querySelector("#model-loading");
@@ -260,10 +262,12 @@ buildCardRail();
 
 document.querySelector("#approach-button").addEventListener("click", () => {
   archive.dataset.phase = "choose";
+  scheduleSceneViewUpdate();
 });
 
 document.querySelector("#retreat-button").addEventListener("click", () => {
   archive.dataset.phase = "entrance";
+  scheduleSceneViewUpdate();
 });
 
 document.querySelectorAll(".tabletop-deck[data-deck]").forEach((button) => {
@@ -327,14 +331,142 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
-cabinet.addEventListener("pointermove", (event) => {
-  const nx = event.clientX / window.innerWidth - 0.5;
-  const ny = event.clientY / window.innerHeight - 0.5;
-  const strength = archive.dataset.phase === "entrance" ? 1 : 0.45;
-  cabinet.querySelector(".scene-image").style.margin = `${ny * -8 * strength}px ${nx * -13 * strength}px`;
-  cabinet.style.setProperty("--scene-x", `${nx * 18}px`);
-  cabinet.style.setProperty("--scene-y", `${ny * 12}px`);
+const SCENE_YAW_LIMIT = 7;
+const SCENE_PITCH_LIMIT = 4.5;
+const SCENE_ZOOM_LIMIT = 0.24;
+const sceneView = {
+  yaw: 0,
+  pitch: 0,
+  zoom: 0,
+  baseScale: 1.1,
+  targetYaw: 0,
+  targetPitch: 0,
+  targetZoom: 0,
+};
+const scenePointers = new Map();
+let sceneDragAnchor = null;
+let scenePinchAnchor = null;
+let sceneViewFrame = 0;
+
+function clampSceneValue(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function isSceneControlTarget(target) {
+  return target instanceof Element && Boolean(target.closest("button, a"));
+}
+
+function resetSceneDragAnchor(pointerId) {
+  const point = scenePointers.get(pointerId);
+  if (!point) return;
+  sceneDragAnchor = {
+    pointerId,
+    x: point.x,
+    y: point.y,
+    yaw: sceneView.targetYaw,
+    pitch: sceneView.targetPitch,
+  };
+}
+
+function scheduleSceneViewUpdate() {
+  if (sceneViewFrame) return;
+  sceneViewFrame = requestAnimationFrame(updateSceneView);
+}
+
+function updateSceneView() {
+  sceneViewFrame = 0;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const smoothing = reducedMotion ? 1 : 0.16;
+  const phaseScale = archive.dataset.phase === "choose" ? 1.46 : 1.1;
+  sceneView.yaw += (sceneView.targetYaw - sceneView.yaw) * smoothing;
+  sceneView.pitch += (sceneView.targetPitch - sceneView.pitch) * smoothing;
+  sceneView.zoom += (sceneView.targetZoom - sceneView.zoom) * smoothing;
+  sceneView.baseScale += (phaseScale - sceneView.baseScale) * (reducedMotion ? 1 : 0.08);
+
+  const chooseOffset = archive.dataset.phase === "choose" ? window.innerHeight * 0.035 : 0;
+  const panX = sceneView.yaw * -1.65;
+  const panY = chooseOffset + sceneView.pitch * 1.35;
+  const scale = sceneView.baseScale + sceneView.zoom;
+  sceneImage.style.transform = `perspective(1200px) translate3d(${panX.toFixed(2)}px, ${panY.toFixed(2)}px, 0) rotateX(${sceneView.pitch.toFixed(3)}deg) rotateY(${sceneView.yaw.toFixed(3)}deg) scale(${scale.toFixed(4)})`;
+  cabinet.style.setProperty("--scene-x", `${(-sceneView.yaw * 2.4).toFixed(2)}px`);
+  cabinet.style.setProperty("--scene-y", `${(sceneView.pitch * 2).toFixed(2)}px`);
+  cabinet.style.setProperty("--depth-x", `${(sceneView.yaw * 1.2).toFixed(2)}px`);
+  cabinet.style.setProperty("--depth-y", `${(-sceneView.pitch).toFixed(2)}px`);
+
+  const unsettled = Math.abs(sceneView.targetYaw - sceneView.yaw) > 0.003
+    || Math.abs(sceneView.targetPitch - sceneView.pitch) > 0.003
+    || Math.abs(sceneView.targetZoom - sceneView.zoom) > 0.0003
+    || Math.abs(phaseScale - sceneView.baseScale) > 0.0003;
+  if (unsettled) scheduleSceneViewUpdate();
+}
+
+function resetSceneView() {
+  sceneView.targetYaw = 0;
+  sceneView.targetPitch = 0;
+  sceneView.targetZoom = 0;
+  scheduleSceneViewUpdate();
+}
+
+sceneResetButton.addEventListener("click", resetSceneView);
+
+cabinet.addEventListener("pointerdown", (event) => {
+  if (isSceneControlTarget(event.target) || inspectionVisible) return;
+  scenePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  cabinet.setPointerCapture?.(event.pointerId);
+  cabinet.classList.add("is-scene-dragging");
+  if (scenePointers.size === 1) {
+    resetSceneDragAnchor(event.pointerId);
+  } else if (scenePointers.size === 2) {
+    const [first, second] = [...scenePointers.values()];
+    scenePinchAnchor = {
+      distance: Math.hypot(second.x - first.x, second.y - first.y),
+      zoom: sceneView.targetZoom,
+    };
+  }
 });
+
+cabinet.addEventListener("pointermove", (event) => {
+  if (!scenePointers.has(event.pointerId)) return;
+  scenePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (scenePointers.size >= 2 && scenePinchAnchor) {
+    const [first, second] = [...scenePointers.values()];
+    const distance = Math.hypot(second.x - first.x, second.y - first.y);
+    sceneView.targetZoom = clampSceneValue(scenePinchAnchor.zoom + (distance - scenePinchAnchor.distance) / 520, 0, SCENE_ZOOM_LIMIT);
+  } else if (sceneDragAnchor?.pointerId === event.pointerId) {
+    const dx = event.clientX - sceneDragAnchor.x;
+    const dy = event.clientY - sceneDragAnchor.y;
+    sceneView.targetYaw = clampSceneValue(sceneDragAnchor.yaw + dx * 0.028, -SCENE_YAW_LIMIT, SCENE_YAW_LIMIT);
+    sceneView.targetPitch = clampSceneValue(sceneDragAnchor.pitch - dy * 0.024, -SCENE_PITCH_LIMIT, SCENE_PITCH_LIMIT);
+  }
+  scheduleSceneViewUpdate();
+});
+
+function endScenePointer(event) {
+  if (!scenePointers.has(event.pointerId)) return;
+  scenePointers.delete(event.pointerId);
+  if (cabinet.hasPointerCapture?.(event.pointerId)) cabinet.releasePointerCapture(event.pointerId);
+  scenePinchAnchor = null;
+  if (scenePointers.size === 1) {
+    resetSceneDragAnchor(scenePointers.keys().next().value);
+  } else if (scenePointers.size === 0) {
+    sceneDragAnchor = null;
+    cabinet.classList.remove("is-scene-dragging");
+  }
+}
+
+cabinet.addEventListener("pointerup", endScenePointer);
+cabinet.addEventListener("pointercancel", endScenePointer);
+cabinet.addEventListener("lostpointercapture", endScenePointer);
+
+cabinet.addEventListener("wheel", (event) => {
+  if (isSceneControlTarget(event.target) || inspectionVisible) return;
+  event.preventDefault();
+  sceneView.targetZoom = clampSceneValue(sceneView.targetZoom - event.deltaY * 0.00042, 0, SCENE_ZOOM_LIMIT);
+  scheduleSceneViewUpdate();
+}, { passive: false });
+
+window.addEventListener("resize", scheduleSceneViewUpdate);
+scheduleSceneViewUpdate();
 
 
 function buildDomParticles(container, count, bright) {

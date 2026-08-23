@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#050807" />
     <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
     <title>Arcana Cabinet｜塔羅藏書室</title>
-    <link rel="stylesheet" href="./styles.css?v=20260814-12" />
+    <link rel="stylesheet" href="./styles.css?v=20260823-01" />
     <script type="importmap">
       {
         "imports": {
@@ -43,7 +43,7 @@
           <h1>走進<br />塔羅藏書室</h1>
           <p class="scene-lead">燭光只照亮被允許閱讀的牌。向書櫃前行，選擇一副牌，讓故事自己浮現。</p>
           <button id="approach-button" class="ritual-button" type="button"><span>向書櫃走近</span><i>↑</i></button>
-          <small>滑鼠移動可觀察空間深度</small>
+          <small>拖曳旋轉 · 滾輪／雙指縮放</small>
         </div>
 
         <div class="scene-copy choose-copy" aria-live="polite">
@@ -69,6 +69,11 @@
             <span class="deck-object" aria-hidden="true"></span>
             <span class="deck-name"><small>COLLECTION 02 · INNER BOX</small><b>WOODLAND INNER DECK</b><em>點擊召喚</em></span>
           </button>
+        </div>
+
+        <div class="scene-orbit-controls" aria-label="2.5D 場景控制">
+          <span><b>2.5D SCENE</b>拖曳旋轉 · 滾輪／雙指縮放</span>
+          <button id="scene-reset-view" type="button" aria-label="重設 2.5D 場景視角">重設視角</button>
         </div>
 
         <div class="scene-footer"><span>以 29 張本機照片重建</span><span>無上傳 · 無外部 API</span></div>
@@ -156,6 +161,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260814-15"></script>
+    <script type="module" src="./app.js?v=20260823-01"></script>
   </body>
 </html>
