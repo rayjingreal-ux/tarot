@@ -25,7 +25,7 @@ const LEGACY_CARD_MANIFEST_CANDIDATES = [
   "./assets/cards-manifest.json",
   "./cards-manifest.json",
 ];
-const CARD_ASSET_VERSION = "manifest-pool-20260823-01";
+const CARD_ASSET_VERSION = "manifest-pool-20260825-01";
 
 function escapeSvgText(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -67,7 +67,7 @@ function createFallbackCatalog() {
   return cards;
 }
 
-function resolveCardSource(file, manifestUrl = null, basePath = null) {
+function resolveCardSource(file, manifestUrl = null, basePath = null, deckKey = "woodland") {
   if (!file) return null;
   const value = String(file).replace(/\\/g, "/");
   if (/^(?:data:|blob:|https?:|file:)/i.test(value)) return value;
@@ -76,7 +76,7 @@ function resolveCardSource(file, manifestUrl = null, basePath = null) {
     return new URL(value, new URL(directory, manifestUrl)).href;
   }
   if (manifestUrl && (value.startsWith(".") || value.includes("/"))) return new URL(value, manifestUrl).href;
-  return new URL(`./assets/woodland/textures/${value}`, window.location.href).href;
+  return new URL(`./assets/${deckKey}/textures/${value}`, window.location.href).href;
 }
 
 function versionCardSource(source) {
@@ -86,7 +86,7 @@ function versionCardSource(source) {
   return url.href;
 }
 
-function normalizeCardCatalog(payload, manifestUrl = null) {
+function normalizeCardCatalog(payload, manifestUrl = null, deckKey = "woodland") {
   const sourceCards = Array.isArray(payload) ? payload : payload?.cards;
   if (!Array.isArray(sourceCards) || sourceCards.length < 78) return null;
   const fallbackCards = createFallbackCatalog();
@@ -106,8 +106,8 @@ function normalizeCardCatalog(payload, manifestUrl = null) {
         file: typeof file === "string" ? file : null,
         thumbnailFile: typeof thumbnailFile === "string" ? thumbnailFile : null,
       };
-      normalized.src = versionCardSource(resolveCardSource(normalized.file, manifestUrl, basePath)) ?? createFallbackCardSource(normalized);
-      normalized.thumbnailSrc = versionCardSource(resolveCardSource(normalized.thumbnailFile, manifestUrl, basePath)) ?? normalized.src;
+      normalized.src = versionCardSource(resolveCardSource(normalized.file, manifestUrl, basePath, deckKey)) ?? createFallbackCardSource(normalized);
+      normalized.thumbnailSrc = versionCardSource(resolveCardSource(normalized.thumbnailFile, manifestUrl, basePath, deckKey)) ?? normalized.src;
       normalized.fallbackSrc = createFallbackCardSource(normalized);
       return normalized;
     });
@@ -116,15 +116,18 @@ function normalizeCardCatalog(payload, manifestUrl = null) {
 async function loadCardCatalog(deckKey) {
   const deck = DECKS[deckKey];
   if (!deck?.hasCards) return [];
-  const injected = normalizeCardCatalog(globalThis.WOODLAND_CARDS_MANIFEST);
+  const injected = deckKey === "woodland"
+    ? normalizeCardCatalog(globalThis.WOODLAND_CARDS_MANIFEST, null, deckKey)
+    : null;
   if (injected) return injected;
   if (window.location.protocol !== "file:") {
-    const candidates = [deck.cardManifest, ...LEGACY_CARD_MANIFEST_CANDIDATES].filter(Boolean);
+    const legacyCandidates = deckKey === "woodland" ? LEGACY_CARD_MANIFEST_CANDIDATES : [];
+    const candidates = [deck.cardManifest, ...legacyCandidates].filter(Boolean);
     for (const candidate of [...new Set(candidates)]) {
       try {
         const response = await fetch(candidate, { cache: "no-store" });
         if (!response.ok) continue;
-        const catalog = normalizeCardCatalog(await response.json(), response.url);
+        const catalog = normalizeCardCatalog(await response.json(), response.url, deckKey);
         if (catalog) {
           console.info(`[arcana] loaded ${catalog.length} cards from ${response.url}`);
           return catalog;
@@ -136,7 +139,7 @@ async function loadCardCatalog(deckKey) {
   }
   const fallback = createFallbackCatalog().map((card) => ({
     ...card,
-    src: resolveCardSource(card.file) ?? createFallbackCardSource(card),
+    src: resolveCardSource(card.file, null, null, deckKey) ?? createFallbackCardSource(card),
     fallbackSrc: createFallbackCardSource(card),
   }));
   console.info("[arcana] using the embedded 78-card catalog; set window.WOODLAND_CARDS_MANIFEST when running from file:// to inject generated assets synchronously");
@@ -174,6 +177,28 @@ const DEFAULT_DECKS = {
     cardManifest: "./assets/cards-manifest.json",
     textureRoot: "./assets/woodland/textures/",
     textureVersion: "20260814-10",
+    textureFiles: [
+      "outer-front.jpg", "outer-back.jpg", "outer-inside.jpg", "outer-left.jpg", "outer-right.jpg", "outer-top.jpg", "outer-bottom.jpg",
+      "inner-front.jpg", "inner-back.jpg", "inner-front-upright.jpg", "inner-back-upright.jpg", "inner-left.jpg", "inner-right.jpg", "inner-top.jpg", "inner-bottom.jpg",
+      "guidebook-front.png", "guidebook-back.png", "card-back.png",
+    ],
+    cardBack: "card-back.png",
+  },
+  redvisions: {
+    number: "03",
+    header: "RED VISIONS TAROT",
+    kicker: "LIBER SOMNIA · DREAM VISIONS",
+    title: "RED VISIONS<br /><em>Tarot</em>",
+    description: "深紅磁吸書型牌盒、說明書、內卡盒與完整七十八張已校正牌面，依實拍素材重建。",
+    structure: "OUTER BOX + GUIDE + INNER BOX",
+    cards: "LXXVIII / LXXVIII",
+    basis: "90 PHOTOS",
+    hasCards: true,
+    openLabel: "打開磁吸書型盒",
+    closeLabel: "闔上磁吸書型盒",
+    cardManifest: "./assets/redvisions/cards-manifest.json",
+    textureRoot: "./assets/redvisions/textures/",
+    textureVersion: "20260825-01",
     textureFiles: [
       "outer-front.jpg", "outer-back.jpg", "outer-inside.jpg", "outer-left.jpg", "outer-right.jpg", "outer-top.jpg", "outer-bottom.jpg",
       "inner-front.jpg", "inner-back.jpg", "inner-front-upright.jpg", "inner-back-upright.jpg", "inner-left.jpg", "inner-right.jpg", "inner-top.jpg", "inner-bottom.jpg",
@@ -265,6 +290,9 @@ const boxSequenceHint = document.querySelector(".box-sequence-hint");
 let feedbackResetTimer = null;
 
 let activeDeckKey = "woodland";
+function isBookDeck(deckKey = activeDeckKey) {
+  return deckKey === "woodland" || deckKey === "redvisions";
+}
 let activeMode = "box";
 let selectedCard = 0;
 let selectedFlipped = false;
@@ -647,7 +675,7 @@ function updateArtifactCopy() {
   document.querySelector("#artifact-basis").textContent = deck.basis;
   cardsModeTab.disabled = !deck.hasCards;
   cardsModeTab.title = deck.hasCards ? "檢視已拍攝牌面" : "需要獨立牌面照片才能啟用";
-  const sequenceHint = activeDeckKey === "woodland"
+  const sequenceHint = isBookDeck(activeDeckKey)
     ? "單擊外盒開啟 · 單擊說明書取出／翻面 · 單擊內卡盒浮出 · 再單擊內卡盒抽牌"
     : "單擊外盒拉出或收回內盒";
   boxSequenceHint.dataset.defaultText = sequenceHint;
@@ -708,11 +736,12 @@ function enterInspection(deckKey) {
   activeDeckKey = deckKey;
   if (DECKS[deckKey].hasCards) void ensureDeckCardExperience(deckKey);
   updateArtifactCopy();
-  if (deckKey === "woodland") {
+  if (isBookDeck(deckKey)) {
+    applyBookDeckAppearance(deckKey);
     cardsModeTab.disabled = true;
     cardsModeTab.title = "依序單擊說明書與內卡盒後開啟";
   }
-  woodlandRoot.visible = deckKey === "woodland";
+  woodlandRoot.visible = isBookDeck(deckKey);
   unveiledRoot.visible = deckKey === "unveiled";
   inspectionVisible = true;
   inspection.classList.add("is-visible", "is-summoning");
@@ -748,7 +777,7 @@ function leaveInspection() {
 function setMode(mode, userInitiated = false) {
   if (isCardTransitionActive()) return;
   if (mode === "cards" && !DECKS[activeDeckKey].hasCards) return;
-  if (mode === "cards" && activeDeckKey === "woodland" && !cardRevealComplete) return;
+  if (mode === "cards" && isBookDeck(activeDeckKey) && !cardRevealComplete) return;
   activeMode = mode;
   document.querySelectorAll(".mode-tab").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.mode === mode);
@@ -756,7 +785,7 @@ function setMode(mode, userInitiated = false) {
   const cardsActive = mode === "cards";
   boxControls.classList.toggle("is-hidden", cardsActive);
   cardControls.setAttribute("aria-hidden", cardsActive ? "false" : "true");
-  cardsGroup.visible = cardsActive && activeDeckKey === "woodland";
+  cardsGroup.visible = cardsActive && isBookDeck(activeDeckKey);
   controls.autoRotate = false;
 
   if (cardsActive) {
@@ -824,7 +853,7 @@ function setCardInteractionLocked(locked) {
   Array.from(cardRail.children).forEach((button) => { button.disabled = locked; });
   const boxModeTab = document.querySelector('.mode-tab[data-mode="box"]');
   boxModeTab.disabled = locked;
-  cardsModeTab.disabled = locked || (activeDeckKey === "woodland" && !cardRevealComplete);
+  cardsModeTab.disabled = locked || (isBookDeck(activeDeckKey) && !cardRevealComplete);
 }
 
 
@@ -856,13 +885,13 @@ function setViewMenuOpen(open) {
 
 
 function getActiveOpenTarget() {
-  return activeDeckKey === "woodland" ? woodlandOpenTarget : unveiledOpenTarget;
+  return isBookDeck(activeDeckKey) ? woodlandOpenTarget : unveiledOpenTarget;
 }
 
 
 function setBoxOpen(value, { sound = false } = {}) {
   const clamped = THREE.MathUtils.clamp(value, 0, 1);
-  if (activeDeckKey === "woodland") {
+  if (isBookDeck(activeDeckKey)) {
     woodlandOpenTarget = clamped;
     if (clamped < 0.5) {
       setViewMenuOpen(false);
@@ -995,7 +1024,7 @@ function playBoxSound(open, deckKey) {
   const noise = createNoiseSource(context, duration);
   const filter = context.createBiquadFilter();
   filter.type = "bandpass";
-  filter.frequency.setValueAtTime(deckKey === "woodland" ? 720 : 980, now);
+  filter.frequency.setValueAtTime(isBookDeck(deckKey) ? 720 : 980, now);
   filter.frequency.exponentialRampToValueAtTime(open ? 430 : 560, now + duration);
   filter.Q.value = 0.72;
   const gain = context.createGain();
@@ -1390,6 +1419,42 @@ woodlandRoot.traverse((object) => {
     woodlandDisplayMaterialState.set(material, material.color.clone());
   });
 });
+
+const bookTextureBindings = [
+  [diamondLining, "outer-inside.jpg"],
+  [woodlandBaseMaterials[0], "outer-right.jpg"],
+  [woodlandBaseMaterials[1], "outer-left.jpg"],
+  [woodlandBaseMaterials[2], "outer-top.jpg"],
+  [woodlandBaseMaterials[3], "outer-bottom.jpg"],
+  [woodlandBaseMaterials[5], "outer-back.jpg"],
+  [woodlandCoverMaterials[4], "outer-front.jpg"],
+  [woodlandInnerMaterials[0], "inner-right.jpg"],
+  [woodlandInnerMaterials[1], "inner-left.jpg"],
+  [woodlandInnerMaterials[2], "inner-top.jpg"],
+  [woodlandInnerMaterials[3], "inner-bottom.jpg"],
+  [woodlandInnerMaterials[4], "inner-front-upright.jpg"],
+  [woodlandInnerMaterials[5], "inner-back-upright.jpg"],
+  [guidebookMaterials[4], "guidebook-front.png"],
+  [guidebookMaterials[5], "guidebook-back.png"],
+];
+
+function applyBookDeckAppearance(deckKey) {
+  if (!isBookDeck(deckKey)) return;
+  for (const [material, file] of bookTextureBindings) {
+    const texture = textures[`${deckKey}:${file}`];
+    if (!texture) continue;
+    material.map = texture;
+    material.needsUpdate = true;
+  }
+  const isRedVisions = deckKey === "redvisions";
+  const edgeColor = isRedVisions ? 0x5b1719 : 0x335853;
+  const paperColor = isRedVisions ? 0x6e2224 : 0xa87c40;
+  greenEdge.color.setHex(edgeColor);
+  goldPaper.color.setHex(paperColor);
+  woodlandDisplayMaterialState.set(greenEdge, new THREE.Color(edgeColor));
+  woodlandDisplayMaterialState.set(goldPaper, new THREE.Color(paperColor));
+  woodlandRoot.name = DECKS[deckKey].header;
+}
 
 
 // First collection rebuilt into the same dark inspection stage and effects.
@@ -1961,7 +2026,7 @@ function handleInnerBoxClick() {
     innerBoxGlowTarget = 1;
     woodlandPhase = WOODLAND_PHASE.INNER_FLOATING;
     inspection.dataset.woodlandPhase = woodlandPhase;
-    playBoxSound(true, "woodland");
+    playBoxSound(true, activeDeckKey);
     triggerMysticEffect(0.36);
     showBoxFeedback("已選取內卡盒：正在浮出");
     return;
@@ -1999,7 +2064,7 @@ function beginCardSummoning() {
 }
 
 async function prepareCardSummoningAssets() {
-  const cards = await ensureDeckCardExperience("woodland");
+    const cards = await ensureDeckCardExperience(activeDeckKey);
   if (woodlandPhase !== WOODLAND_PHASE.SUMMONING || !cards.length) return;
   pendingSummonCardIndex = Math.floor(Math.random() * cards.length);
   await ensureCardTexture(pendingSummonCardIndex);
@@ -2180,7 +2245,7 @@ renderer.domElement.addEventListener("click", (event) => {
 renderer.domElement.addEventListener("pointermove", (event) => {
   if (!inspectionVisible || activeMode !== "box") return;
   setPointerFromEvent(event);
-  const activeRoot = activeDeckKey === "woodland" ? woodlandRoot : unveiledRoot;
+  const activeRoot = isBookDeck(activeDeckKey) ? woodlandRoot : unveiledRoot;
   const hasObject = raycaster.intersectObject(activeRoot, true).length > 0;
   renderer.domElement.style.cursor = hasObject ? "pointer" : "grab";
 });
@@ -2188,7 +2253,7 @@ renderer.domElement.addEventListener("pointermove", (event) => {
 renderer.domElement.addEventListener("click", (event) => {
   if (!inspectionVisible || activeMode !== "box" || isCardTransitionActive()) return;
   setPointerFromEvent(event);
-  const activeRoot = activeDeckKey === "woodland" ? woodlandRoot : unveiledRoot;
+  const activeRoot = isBookDeck(activeDeckKey) ? woodlandRoot : unveiledRoot;
 
   if (activeDeckKey === "unveiled") {
     if (raycaster.intersectObject(activeRoot, true).length === 0) return;
@@ -2250,7 +2315,7 @@ function activateView(name) {
   document.querySelectorAll(".view-button").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.view === name);
   });
-  const root = activeDeckKey === "woodland" ? woodlandRoot : unveiledRoot;
+  const root = isBookDeck(activeDeckKey) ? woodlandRoot : unveiledRoot;
   root.rotation.y = 0;
   root.rotation.z = 0;
   queueCamera(position);
@@ -2513,7 +2578,7 @@ function animate(now) {
   unveiledDrawer.position.y = -unveiledEase * 1.13;
   unveiledDrawer.position.z = unveiledEase * 0.12;
 
-  const activeRoot = activeDeckKey === "woodland" ? woodlandRoot : unveiledRoot;
+  const activeRoot = isBookDeck(activeDeckKey) ? woodlandRoot : unveiledRoot;
   const floatY = inspectionVisible ? Math.sin(time * 0.86) * 0.018 : 0;
   activeRoot.position.x = THREE.MathUtils.damp(activeRoot.position.x, artifactTargetPosition.x, 5, dt);
   activeRoot.position.y = THREE.MathUtils.damp(activeRoot.position.y, artifactTargetPosition.y + floatY, 5, dt);

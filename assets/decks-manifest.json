@@ -61,6 +61,44 @@
         "card-back.png"
       ],
       "cardBack": "card-back.png"
+    },
+    {
+      "id": "redvisions",
+      "number": "03",
+      "header": "RED VISIONS TAROT",
+      "kicker": "LIBER SOMNIA · DREAM VISIONS",
+      "title": "RED VISIONS<br /><em>Tarot</em>",
+      "description": "深紅磁吸書型牌盒、說明書、內卡盒與完整七十八張已校正牌面，依實拍素材重建。",
+      "structure": "OUTER BOX + GUIDE + INNER BOX",
+      "cards": "LXXVIII / LXXVIII",
+      "basis": "90 PHOTOS",
+      "hasCards": true,
+      "openLabel": "打開磁吸書型盒",
+      "closeLabel": "闔上磁吸書型盒",
+      "cardManifest": "./redvisions/cards-manifest.json",
+      "textureRoot": "./redvisions/textures/",
+      "textureVersion": "20260825-01",
+      "textureFiles": [
+        "outer-front.jpg",
+        "outer-back.jpg",
+        "outer-inside.jpg",
+        "outer-left.jpg",
+        "outer-right.jpg",
+        "outer-top.jpg",
+        "outer-bottom.jpg",
+        "inner-front.jpg",
+        "inner-back.jpg",
+        "inner-front-upright.jpg",
+        "inner-back-upright.jpg",
+        "inner-left.jpg",
+        "inner-right.jpg",
+        "inner-top.jpg",
+        "inner-bottom.jpg",
+        "guidebook-front.png",
+        "guidebook-back.png",
+        "card-back.png"
+      ],
+      "cardBack": "card-back.png"
     }
   ]
 }
