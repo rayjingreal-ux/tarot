@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#050807" />
     <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
     <title>Arcana Cabinet｜塔羅藏書室</title>
-    <link rel="stylesheet" href="./styles.css?v=20260825-01" />
+    <link rel="stylesheet" href="./styles.css?v=20260825-02" />
     <script type="importmap">
       {
         "imports": {
@@ -71,6 +71,12 @@
           </button>
         </div>
 
+        <nav class="deck-workbench-nav" aria-label="完整 78 張卡牌工作檯">
+          <span><i>78</i> CARD WORKBENCH</span>
+          <a href="./?deck=woodland&amp;mode=browse" data-browse-deck="woodland"><small>02</small>WOODLAND · 一般瀏覽</a>
+          <a href="./?deck=redvisions&amp;mode=browse" data-browse-deck="redvisions"><small>03</small>RED VISIONS · 一般瀏覽</a>
+        </nav>
+
         <div class="scene-orbit-controls" aria-label="2.5D 場景控制">
           <span><b>2.5D SCENE</b>拖曳旋轉 · 滾輪／雙指縮放</span>
           <button id="scene-reset-view" type="button" aria-label="重設 2.5D 場景視角">重設視角</button>
@@ -110,7 +116,8 @@
 
         <nav class="mode-tabs" aria-label="鑑賞模式">
           <button class="mode-tab is-active" data-mode="box" type="button"><small>01</small>牌盒</button>
-          <button id="cards-mode-tab" class="mode-tab" data-mode="cards" type="button"><small>02</small>卡牌</button>
+          <button id="cards-mode-tab" class="mode-tab" data-mode="cards" type="button"><small>02</small>抽牌</button>
+          <button id="browse-mode-tab" class="mode-tab" data-mode="browse" type="button"><small>03</small>一般瀏覽</button>
         </nav>
 
         <div id="box-controls" class="box-controls">
@@ -133,7 +140,7 @@
         </div>
 
         <div id="card-controls" class="card-controls" aria-hidden="true">
-          <div class="selected-card-title" aria-live="polite"><small id="card-index">ARCANA 0</small><b id="card-name">THE FOOL</b></div>
+          <div class="selected-card-title" aria-live="polite"><small id="card-index">ARCANA ···</small><b id="card-name">尚未翻牌</b></div>
           <div class="card-actions">
             <button id="previous-card" type="button" aria-label="上一張牌">←</button>
             <button id="flip-card" type="button"><span>翻至正面</span><i>↻</i></button>
@@ -152,6 +159,42 @@
           </div>
         </div>
 
+        <section id="browse-panel" class="browse-panel" aria-hidden="true" aria-label="一般卡牌瀏覽與管理">
+          <header class="browse-header">
+            <div>
+              <p>GENERAL BROWSE · CARD MANAGEMENT</p>
+              <h2 id="browse-deck-title">WOODLAND FAIRY TALE TAROT</h2>
+            </div>
+            <div class="browse-summary" aria-live="polite">
+              <strong id="browse-loaded-count">0</strong><span>/ 78 已載入</span>
+              <a id="browse-dedicated-workbench" href="./redvisions-workbench/" hidden>開啟校正工作檯 ↗</a>
+            </div>
+          </header>
+          <nav class="browse-filters" aria-label="卡牌分類篩選">
+            <button type="button" class="is-active" data-browse-filter="all">全部 <span>78</span></button>
+            <button type="button" data-browse-filter="major">大阿爾克那 <span>22</span></button>
+            <button type="button" data-browse-filter="wands">權杖 <span>14</span></button>
+            <button type="button" data-browse-filter="cups">聖杯 <span>14</span></button>
+            <button type="button" data-browse-filter="swords">寶劍 <span>14</span></button>
+            <button type="button" data-browse-filter="pentacles">錢幣 <span>14</span></button>
+          </nav>
+          <div id="browse-card-grid" class="browse-card-grid" aria-live="polite">
+            <p class="browse-loading">正在整理 78 張牌面…</p>
+          </div>
+        </section>
+
+        <dialog id="browse-viewer" class="browse-viewer">
+          <button id="browse-viewer-close" class="browse-viewer-close" type="button" aria-label="關閉卡牌檢視">×</button>
+          <figure>
+            <img id="browse-viewer-image" alt="" />
+            <figcaption>
+              <span id="browse-viewer-index"></span>
+              <strong id="browse-viewer-title"></strong>
+              <small id="browse-viewer-subtitle"></small>
+            </figcaption>
+          </figure>
+        </dialog>
+
         <div class="interaction-hint"><i></i><span>拖曳旋轉</span><b>·</b><span>滾輪縮放</span></div>
       </section>
     </main>
@@ -161,6 +204,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260825-01"></script>
+    <script type="module" src="./app.js?v=20260825-02"></script>
   </body>
 </html>

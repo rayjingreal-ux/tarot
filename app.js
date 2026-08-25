@@ -50,16 +50,24 @@ function createFallbackCardSource(card) {
 function createFallbackCatalog() {
   const cards = MAJOR_ARCANA.map(([numeral, name, slug], index) => ({
     id: `major-${String(index).padStart(2, "0")}-${slug}`,
+    index,
     numeral,
     name,
+    nameZh: "",
+    suit: "Major Arcana",
+    rank: numeral,
     file: index < 6 ? `card-${String(index).padStart(2, "0")}-${slug}.png` : null,
   }));
   MINOR_SUITS.forEach((suit) => {
     MINOR_RANKS.forEach((rank, rankIndex) => {
       cards.push({
         id: `${suit.toLowerCase()}-${String(rankIndex + 1).padStart(2, "0")}`,
+        index: cards.length,
         numeral: `${suit} / ${rank}`,
         name: `${rank} OF ${suit}`,
+        nameZh: "",
+        suit,
+        rank,
         file: null,
       });
     });
@@ -101,8 +109,12 @@ function normalizeCardCatalog(payload, manifestUrl = null, deckKey = "woodland")
       const thumbnailFile = card.thumbnail ?? card.thumb ?? card.preview ?? card.image?.thumbnail ?? null;
       const normalized = {
         id: String(card.id ?? card.slug ?? fallback.id),
+        index: Number(card.index ?? card.order ?? index),
         numeral: String(card.numeral ?? card.roman ?? card.arcana ?? card.number ?? card.rank ?? fallback.numeral),
         name: String(card.name ?? card.title ?? card.name_en ?? card.label ?? fallback.name).toUpperCase(),
+        nameZh: String(card.nameZh ?? card.name_zh ?? card.title_zh ?? card.label_zh ?? fallback.nameZh ?? ""),
+        suit: String(card.suit ?? card.arcana_group ?? fallback.suit ?? ""),
+        rank: String(card.rank ?? fallback.rank ?? ""),
         file: typeof file === "string" ? file : null,
         thumbnailFile: typeof thumbnailFile === "string" ? thumbnailFile : null,
       };
@@ -140,6 +152,7 @@ async function loadCardCatalog(deckKey) {
   const fallback = createFallbackCatalog().map((card) => ({
     ...card,
     src: resolveCardSource(card.file, null, null, deckKey) ?? createFallbackCardSource(card),
+    thumbnailSrc: resolveCardSource(card.file, null, null, deckKey) ?? createFallbackCardSource(card),
     fallbackSrc: createFallbackCardSource(card),
   }));
   console.info("[arcana] using the embedded 78-card catalog; set window.WOODLAND_CARDS_MANIFEST when running from file:// to inject generated assets synchronously");
@@ -273,6 +286,17 @@ const flash = document.querySelector("#mystic-flash");
 const boxControls = document.querySelector("#box-controls");
 const cardControls = document.querySelector("#card-controls");
 const cardsModeTab = document.querySelector("#cards-mode-tab");
+const browseModeTab = document.querySelector("#browse-mode-tab");
+const browsePanel = document.querySelector("#browse-panel");
+const browseCardGrid = document.querySelector("#browse-card-grid");
+const browseDeckTitle = document.querySelector("#browse-deck-title");
+const browseLoadedCount = document.querySelector("#browse-loaded-count");
+const browseDedicatedWorkbench = document.querySelector("#browse-dedicated-workbench");
+const browseViewer = document.querySelector("#browse-viewer");
+const browseViewerImage = document.querySelector("#browse-viewer-image");
+const browseViewerIndex = document.querySelector("#browse-viewer-index");
+const browseViewerTitle = document.querySelector("#browse-viewer-title");
+const browseViewerSubtitle = document.querySelector("#browse-viewer-subtitle");
 const openButton = document.querySelector("#open-box");
 const viewMenuToggle = document.querySelector("#view-menu-toggle");
 const viewMenuPanel = document.querySelector("#view-menu-panel");
@@ -331,6 +355,8 @@ let cardWebGLAssetsReady = false;
 let cardCatalogDeckKey = null;
 let cardCatalogLoadPromise = null;
 let cardRailObserver = null;
+let browseRenderedDeckKey = null;
+let activeBrowseFilter = "all";
 let pendingSummonCardIndex = null;
 let cardSummonAssetsReady = false;
 const CARD_SUMMON_RAY_EXPAND_MS = 2200;
@@ -376,6 +402,13 @@ document.querySelector("#retreat-button").addEventListener("click", () => {
 
 document.querySelectorAll(".tabletop-deck[data-deck]").forEach((button) => {
   button.addEventListener("click", () => enterInspection(button.dataset.deck));
+});
+
+document.querySelectorAll("[data-browse-deck]").forEach((link) => {
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    enterInspection(link.dataset.browseDeck, "browse");
+  });
 });
 
 document.querySelector("#close-inspection").addEventListener("click", leaveInspection);
@@ -425,9 +458,18 @@ cardCatalogToggle.addEventListener("click", () => {
   setCardCatalogOpen(cardCatalogToggle.getAttribute("aria-expanded") !== "true");
 });
 
+document.querySelectorAll("[data-browse-filter]").forEach((button) => {
+  button.addEventListener("click", () => setBrowseFilter(button.dataset.browseFilter));
+});
+
+document.querySelector("#browse-viewer-close").addEventListener("click", () => browseViewer.close());
+browseViewer.addEventListener("click", (event) => {
+  if (event.target === browseViewer) browseViewer.close();
+});
+
 window.addEventListener("keydown", (event) => {
   if (!inspectionVisible) return;
-  if (event.key === "Escape") leaveInspection();
+  if (event.key === "Escape" && !browseViewer.open) leaveInspection();
   if (activeMode === "cards" && !isCardTransitionActive()) {
     if (event.key === "ArrowLeft") selectCard(selectedCard - 1);
     if (event.key === "ArrowRight") selectCard(selectedCard + 1);
@@ -627,6 +669,104 @@ function buildCardRail() {
   updateCardAssetReadiness();
 }
 
+function getBrowseSuitKey(card) {
+  const suit = String(card.suit ?? card.numeral ?? card.name).toLowerCase();
+  if (suit.includes("major")) return "major";
+  if (suit.includes("wand")) return "wands";
+  if (suit.includes("cup")) return "cups";
+  if (suit.includes("sword")) return "swords";
+  return "pentacles";
+}
+
+function setBrowseFilter(filter) {
+  activeBrowseFilter = filter || "all";
+  document.querySelectorAll("[data-browse-filter]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.browseFilter === activeBrowseFilter);
+  });
+  browseCardGrid.querySelectorAll(".browse-card").forEach((card) => {
+    card.hidden = activeBrowseFilter !== "all" && card.dataset.suit !== activeBrowseFilter;
+  });
+}
+
+function openBrowseViewer(card) {
+  const number = String(card.index ?? 0).padStart(2, "0");
+  browseViewerImage.src = card.src;
+  browseViewerImage.alt = `${number} ${card.name}${card.nameZh ? ` ${card.nameZh}` : ""}`;
+  browseViewerIndex.textContent = `${number} · ${card.suit || "TAROT"}`;
+  browseViewerTitle.textContent = card.name;
+  browseViewerSubtitle.textContent = card.nameZh || card.numeral;
+  if (typeof browseViewer.showModal === "function") browseViewer.showModal();
+  else browseViewer.setAttribute("open", "");
+}
+
+function renderBrowseGrid() {
+  if (!CARDS.length || cardCatalogDeckKey !== activeDeckKey) {
+    browseCardGrid.innerHTML = '<p class="browse-loading">正在整理 78 張牌面…</p>';
+    browseLoadedCount.textContent = "0";
+    return;
+  }
+  if (browseRenderedDeckKey === activeDeckKey && browseCardGrid.querySelector(".browse-card")) {
+    setBrowseFilter(activeBrowseFilter);
+    return;
+  }
+
+  browseRenderedDeckKey = activeDeckKey;
+  const renderedDeckKey = activeDeckKey;
+  browseLoadedCount.textContent = "0";
+  browseCardGrid.replaceChildren();
+  let loaded = 0;
+  CARDS.forEach((card) => {
+    const article = document.createElement("article");
+    article.className = "browse-card";
+    article.dataset.suit = getBrowseSuitKey(card);
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("aria-label", `檢視 ${card.name}${card.nameZh ? ` ${card.nameZh}` : ""}`);
+
+    const frame = document.createElement("span");
+    frame.className = "browse-card-frame";
+    const image = document.createElement("img");
+    image.loading = "lazy";
+    image.decoding = "async";
+    image.alt = "";
+    image.src = card.thumbnailSrc;
+    image.addEventListener("load", () => {
+      article.classList.add("is-loaded");
+      loaded += 1;
+      if (browseRenderedDeckKey === renderedDeckKey && article.isConnected) {
+        browseLoadedCount.textContent = String(loaded);
+      }
+    }, { once: true });
+    image.addEventListener("error", () => {
+      if (image.dataset.fallbackAttempted !== "true") {
+        image.dataset.fallbackAttempted = "true";
+        image.src = card.fallbackSrc;
+      } else {
+        article.classList.add("is-error");
+      }
+    });
+    frame.append(image);
+
+    const metadata = document.createElement("span");
+    metadata.className = "browse-card-meta";
+    const number = document.createElement("small");
+    number.textContent = String(card.index ?? 0).padStart(2, "0");
+    const names = document.createElement("span");
+    const english = document.createElement("strong");
+    english.textContent = card.name;
+    const chinese = document.createElement("em");
+    chinese.textContent = card.nameZh || card.numeral;
+    names.append(english, chinese);
+    metadata.append(number, names);
+    button.append(frame, metadata);
+    button.addEventListener("click", () => openBrowseViewer(card));
+    article.append(button);
+    browseCardGrid.append(article);
+  });
+  setBrowseFilter(activeBrowseFilter);
+}
+
 function loadCardRailImage(image) {
   if (!(image instanceof HTMLImageElement) || image.src || !image.dataset.src) return;
   image.src = image.dataset.src;
@@ -675,6 +815,10 @@ function updateArtifactCopy() {
   document.querySelector("#artifact-basis").textContent = deck.basis;
   cardsModeTab.disabled = !deck.hasCards;
   cardsModeTab.title = deck.hasCards ? "檢視已拍攝牌面" : "需要獨立牌面照片才能啟用";
+  browseModeTab.disabled = !deck.hasCards;
+  browseModeTab.title = deck.hasCards ? "一般瀏覽與管理完整 78 張牌" : "需要完整牌面才能啟用";
+  browseDeckTitle.textContent = deck.header;
+  browseDedicatedWorkbench.hidden = activeDeckKey !== "redvisions";
   const sequenceHint = isBookDeck(activeDeckKey)
     ? "單擊外盒開啟 · 單擊說明書取出／翻面 · 單擊內卡盒浮出 · 再單擊內卡盒抽牌"
     : "單擊外盒拉出或收回內盒";
@@ -731,10 +875,14 @@ function resetWoodlandInteraction() {
 }
 
 
-function enterInspection(deckKey) {
+function enterInspection(deckKey, initialMode = "box") {
   if (!DECKS[deckKey]) return;
   activeDeckKey = deckKey;
-  if (DECKS[deckKey].hasCards) void ensureDeckCardExperience(deckKey);
+  if (DECKS[deckKey].hasCards) {
+    void ensureDeckCardExperience(deckKey).then(() => {
+      if (activeDeckKey === deckKey && activeMode === "browse") renderBrowseGrid();
+    });
+  }
   updateArtifactCopy();
   if (isBookDeck(deckKey)) {
     applyBookDeckAppearance(deckKey);
@@ -748,8 +896,8 @@ function enterInspection(deckKey) {
   inspection.setAttribute("aria-hidden", "false");
   invokeAge = 0;
   resetWoodlandInteraction();
-  setMode("box", false);
   setBoxOpen(0);
+  setMode(initialMode === "browse" ? "browse" : "box", false);
   activateView("front");
   triggerMysticEffect(0.42);
   playInvocationSound();
@@ -770,7 +918,9 @@ function leaveInspection() {
   resetCardTransitionState();
   inspection.removeAttribute("aria-busy");
   inspection.setAttribute("aria-hidden", "true");
+  if (browseViewer.open) browseViewer.close();
   controls.autoRotate = false;
+  controls.enabled = true;
 }
 
 
@@ -778,17 +928,30 @@ function setMode(mode, userInitiated = false) {
   if (isCardTransitionActive()) return;
   if (mode === "cards" && !DECKS[activeDeckKey].hasCards) return;
   if (mode === "cards" && isBookDeck(activeDeckKey) && !cardRevealComplete) return;
+  if (mode === "browse" && !DECKS[activeDeckKey].hasCards) return;
   activeMode = mode;
   document.querySelectorAll(".mode-tab").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.mode === mode);
   });
   const cardsActive = mode === "cards";
-  boxControls.classList.toggle("is-hidden", cardsActive);
+  const browseActive = mode === "browse";
+  boxControls.classList.toggle("is-hidden", cardsActive || browseActive);
   cardControls.setAttribute("aria-hidden", cardsActive ? "false" : "true");
+  browsePanel.setAttribute("aria-hidden", browseActive ? "false" : "true");
+  inspection.classList.toggle("is-browse-mode", browseActive);
   cardsGroup.visible = cardsActive && isBookDeck(activeDeckKey);
   controls.autoRotate = false;
+  controls.enabled = !browseActive;
 
-  if (cardsActive) {
+  if (browseActive) {
+    setViewMenuOpen(false);
+    setCardCatalogOpen(false);
+    cardsGroup.visible = false;
+    browseDeckTitle.textContent = DECKS[activeDeckKey].header;
+    browseDedicatedWorkbench.hidden = activeDeckKey !== "redvisions";
+    artifactBrightnessTarget = 0.16;
+    renderBrowseGrid();
+  } else if (cardsActive) {
     setViewMenuOpen(false);
     setCardCatalogOpen(false);
     setBoxOpen(1, { sound: userInitiated });
@@ -854,6 +1017,7 @@ function setCardInteractionLocked(locked) {
   const boxModeTab = document.querySelector('.mode-tab[data-mode="box"]');
   boxModeTab.disabled = locked;
   cardsModeTab.disabled = locked || (isBookDeck(activeDeckKey) && !cardRevealComplete);
+  browseModeTab.disabled = locked || !DECKS[activeDeckKey].hasCards;
 }
 
 
@@ -934,14 +1098,24 @@ function selectCard(index, effect = true) {
   CARDS.forEach((card, cardNumber) => {
     cardRail.children[cardNumber]?.classList.toggle("is-active", cardNumber === selectedCard);
   });
-  cardIndex.textContent = `ARCANA ${CARDS[selectedCard].numeral}`;
-  cardName.textContent = CARDS[selectedCard].name;
+  updateSelectedCardInfo();
   if (effect) {
     triggerMysticEffect(0.22);
     const rawDirection = index - previousCard;
     playCardSlide(rawDirection === 0 ? 0 : Math.sign(rawDirection));
   }
   requestCardTextureWindow(selectedCard);
+}
+
+function updateSelectedCardInfo(loadingFace = false) {
+  if (!CARDS.length) return;
+  if (selectedFlipped) {
+    cardIndex.textContent = loadingFace ? "牌面載入中" : "ARCANA ···";
+    cardName.textContent = loadingFace ? "正在準備牌面…" : "尚未翻牌";
+    return;
+  }
+  cardIndex.textContent = `ARCANA ${CARDS[selectedCard].numeral}`;
+  cardName.textContent = CARDS[selectedCard].name;
 }
 
 
@@ -952,16 +1126,16 @@ async function flipSelectedCard() {
     const requestedIndex = selectedCard;
     flipCardButton.disabled = true;
     inspection.dataset.cardTextureLoading = "true";
-    cardName.textContent = "正在載入牌面…";
+    updateSelectedCardInfo(true);
     await ensureCardTexture(requestedIndex);
     delete inspection.dataset.cardTextureLoading;
     flipCardButton.disabled = false;
     if (requestedIndex !== selectedCard || activeMode !== "cards") return;
-    cardName.textContent = CARDS[selectedCard].name;
   }
   selectedFlipped = !selectedFlipped;
   inspection.dataset.cardFace = selectedFlipped ? "back" : "front";
   flipCardButton.querySelector("span").textContent = selectedFlipped ? "翻至正面" : "翻至背面";
+  updateSelectedCardInfo();
   triggerMysticEffect(0.12);
   playCardFlip(selectedFlipped ? 1 : -1);
 }
@@ -2634,8 +2808,10 @@ document.querySelectorAll(".tabletop-deck[data-deck]").forEach((button) => {
 cardsGroup.visible = false;
 setBoxOpen(0);
 
-const requestedDeck = new URLSearchParams(window.location.search).get("deck");
+const requestedParameters = new URLSearchParams(window.location.search);
+const requestedDeck = requestedParameters.get("deck");
+const requestedMode = requestedParameters.get("mode");
 if (DECKS[requestedDeck]) {
   archive.dataset.phase = "choose";
-  enterInspection(requestedDeck);
+  enterInspection(requestedDeck, requestedMode);
 }
