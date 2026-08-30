@@ -10,7 +10,7 @@ GitHub Pages：<https://rayjingreal-ux.github.io/tarot/>
 
 - 沉浸式藏書室入口與 3D 鑑賞舞台
 - 牌盒、說明書、第二層牌盒的分段互動
-- The Unveiled 完整 80 張校正版牌面與實體牌背
+- The Unveiled 完整 80 張校正版牌面與實體牌背（以 07 號為透視基準，保留四角圓角透明去背）
 - Woodland、Red Visions 各 78 張完整牌面
 - 展開牌陣預設顯示牌背
 - 抽牌模式在翻至正面前隱藏牌名與編號
@@ -41,6 +41,7 @@ python -m http.server 8877
 - `unveiled-workbench/`：The Unveiled 80 張卡牌校正工作檯
 - `redvisions-workbench/`：Red Visions 78 張卡牌校正工作檯
 - `scripts/process_unveiled_assets.py`：The Unveiled 實拍牌面與牌背校正流程
+- `scripts/validate_unveiled_assets.py`：檢查 80 張牌面、縮圖、牌背、圓角 Alpha 與 07 號投影比例
 - `vendor/three/`：網站所需的 Three.js 瀏覽器模組與授權
 
 ## 素材與授權

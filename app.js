@@ -25,7 +25,7 @@ const LEGACY_CARD_MANIFEST_CANDIDATES = [
   "./assets/cards-manifest.json",
   "./cards-manifest.json",
 ];
-const CARD_ASSET_VERSION = "manifest-pool-20260830-01";
+const CARD_ASSET_VERSION = "manifest-pool-20260830-02";
 
 function escapeSvgText(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -182,7 +182,7 @@ const DEFAULT_DECKS = {
     textureRoot: "./assets/unveiled/textures/",
     cardManifest: "./assets/unveiled/cards-manifest.json",
     workbench: "./unveiled-workbench/",
-    textureVersion: "20260830-01",
+    textureVersion: "20260830-02",
     textureFiles: ["front.jpg", "back.jpg", "left.jpg", "right.jpg", "top.jpg", "drawer.jpg", "../card-back.webp"],
     cardBack: "../card-back.webp",
   },

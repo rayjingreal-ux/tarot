@@ -17,7 +17,7 @@
       "cardManifest": "./unveiled/cards-manifest.json",
       "workbench": "../unveiled-workbench/",
       "textureRoot": "./unveiled/textures/",
-      "textureVersion": "20260830-01",
+      "textureVersion": "20260830-02",
       "textureFiles": [
         "front.jpg",
         "back.jpg",
