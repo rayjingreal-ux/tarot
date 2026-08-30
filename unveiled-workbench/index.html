@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#102224">
+  <title>The Unveiled Tarot｜80 張卡牌修正工作台</title>
+  <link rel="stylesheet" href="../redvisions-workbench/styles.css?v=20260830-unveiled-01">
+  <style>
+    :root {
+      --bg: #0d1b1d;
+      --panel: #13282a;
+      --panel-2: #1b3838;
+      --ink: #fff4df;
+      --muted: #b8cbc2;
+      --gold: #f1aa6f;
+      --gold-soft: #f6d59d;
+      --red: #28766c;
+      --line: rgba(246, 213, 157, 0.2);
+    }
+    body {
+      background:
+        radial-gradient(circle at 86% 2%, rgba(40, 118, 108, 0.38), transparent 32rem),
+        radial-gradient(circle at 8% 22%, rgba(240, 138, 102, 0.18), transparent 28rem),
+        linear-gradient(180deg, #142b2d 0, var(--bg) 38rem);
+    }
+    .hero-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+    .hero-links a {
+      padding: 9px 13px;
+      color: var(--gold-soft);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      text-decoration: none;
+      font-size: .78rem;
+    }
+    .hero-links a:hover { border-color: var(--gold); background: var(--panel-2); }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero__copy">
+      <p class="eyebrow">THE UNVEILED TAROT · COLLECTION 01</p>
+      <h1>80 張卡牌修正工作台</h1>
+      <p class="lede">依實體牌序逐張檢查透視拉正、布面移除、裁切比例與牌面完整度；包含 The Mob 與 The Puppeteer 兩張獨有大牌。</p>
+      <nav class="hero-links" aria-label="返回塔羅藏書室">
+        <a href="../">返回塔羅藏書室</a>
+        <a href="../?deck=unveiled&amp;mode=browse">開啟一般瀏覽</a>
+      </nav>
+    </div>
+    <button class="back-preview" id="backPreview" type="button" aria-label="放大檢視卡牌背面">
+      <img src="../assets/unveiled/card-back.webp?v=20260830-unveiled-01" alt="The Unveiled Tarot 卡牌背面">
+      <span>實體卡牌背面</span>
+    </button>
+  </header>
+
+  <main>
+    <section class="status-panel" aria-label="校正狀態">
+      <div class="stat"><strong id="totalCount">80</strong><span>應有張數</span></div>
+      <div class="stat"><strong id="loadedCount">0</strong><span>成功載入</span></div>
+      <div class="stat"><strong id="errorCount">0</strong><span>載入失敗</span></div>
+      <div class="stat"><strong>4:7</strong><span>統一比例</span></div>
+      <p class="status-message" id="statusMessage" role="status">正在核對 80 張卡牌…</p>
+    </section>
+
+    <nav class="filters" aria-label="卡牌分類">
+      <button type="button" class="filter is-active" data-filter="all">全部 <span>80</span></button>
+      <button type="button" class="filter" data-filter="major">大阿爾克那 <span>24</span></button>
+      <button type="button" class="filter" data-filter="wands">權杖 <span>14</span></button>
+      <button type="button" class="filter" data-filter="cups">聖杯 <span>14</span></button>
+      <button type="button" class="filter" data-filter="swords">寶劍 <span>14</span></button>
+      <button type="button" class="filter" data-filter="pentacles">錢幣 <span>14</span></button>
+    </nav>
+
+    <section class="card-grid" id="cardGrid" aria-live="polite"></section>
+  </main>
+
+  <dialog class="viewer" id="viewer">
+    <button class="viewer__close" id="viewerClose" type="button" aria-label="關閉">×</button>
+    <figure>
+      <img id="viewerImage" alt="">
+      <figcaption>
+        <span id="viewerIndex"></span>
+        <strong id="viewerTitle"></strong>
+        <span id="viewerSubtitle"></span>
+      </figcaption>
+    </figure>
+  </dialog>
+
+  <template id="cardTemplate">
+    <article class="card-item">
+      <button class="card-button" type="button">
+        <span class="card-frame"><img loading="lazy" decoding="async" alt=""></span>
+        <span class="card-meta">
+          <span class="card-number"></span>
+          <span class="card-names"><strong></strong><small></small></span>
+          <span class="card-state">待載入</span>
+        </span>
+      </button>
+    </article>
+  </template>
+
+  <script src="./app.js?v=20260830-unveiled-01" defer></script>
+</body>
+</html>

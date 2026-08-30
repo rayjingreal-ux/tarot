@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#050807" />
     <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
     <title>Arcana Cabinet｜塔羅藏書室</title>
-    <link rel="stylesheet" href="./styles.css?v=20260825-02" />
+    <link rel="stylesheet" href="./styles.css?v=20260830-01" />
     <script type="importmap">
       {
         "imports": {
@@ -57,7 +57,7 @@
           <button class="tabletop-deck deck-unveiled" data-deck="unveiled" type="button" aria-label="召喚 The Unveiled Tarot" aria-busy="true" disabled>
             <i class="deck-aura" aria-hidden="true"></i>
             <span class="deck-object" aria-hidden="true"></span>
-            <span class="deck-name"><small>COLLECTION 01</small><b>THE UNVEILED TAROT</b><em>點擊召喚</em></span>
+            <span class="deck-name"><small>COLLECTION 01 · 80 CARDS</small><b>THE UNVEILED TAROT</b><em>點擊召喚</em></span>
           </button>
           <button class="tabletop-deck deck-woodland" data-deck="woodland" type="button" aria-label="召喚 Woodland Fairy Tale Tarot" aria-busy="true" disabled>
             <i class="deck-aura" aria-hidden="true"></i>
@@ -71,8 +71,9 @@
           </button>
         </div>
 
-        <nav class="deck-workbench-nav" aria-label="完整 78 張卡牌工作檯">
-          <span><i>78</i> CARD WORKBENCH</span>
+        <nav class="deck-workbench-nav" aria-label="完整卡牌工作檯">
+          <span><i>ALL</i> CARD WORKBENCH</span>
+          <a href="./?deck=unveiled&amp;mode=browse" data-browse-deck="unveiled"><small>01</small>THE UNVEILED · 一般瀏覽</a>
           <a href="./?deck=woodland&amp;mode=browse" data-browse-deck="woodland"><small>02</small>WOODLAND · 一般瀏覽</a>
           <a href="./?deck=redvisions&amp;mode=browse" data-browse-deck="redvisions"><small>03</small>RED VISIONS · 一般瀏覽</a>
         </nav>
@@ -151,7 +152,7 @@
             <button id="return-deck" type="button"><span>收回牌盒</span><small>依序歸位</small></button>
           </div>
           <button id="card-catalog-toggle" class="card-catalog-toggle" type="button" aria-expanded="false" aria-controls="card-catalog-panel">
-            <span>牌組目錄</span><small>78 張</small><i aria-hidden="true">⌄</i>
+            <span>牌組目錄</span><small id="card-catalog-count">— 張</small><i aria-hidden="true">⌄</i>
           </button>
           <div id="card-catalog-panel" class="card-catalog-panel" hidden>
             <div id="card-rail" class="card-rail" aria-label="牌面選擇"></div>
@@ -166,20 +167,20 @@
               <h2 id="browse-deck-title">WOODLAND FAIRY TALE TAROT</h2>
             </div>
             <div class="browse-summary" aria-live="polite">
-              <strong id="browse-loaded-count">0</strong><span>/ 78 已載入</span>
+              <strong id="browse-loaded-count">0</strong><span>/ <b id="browse-total-count">—</b> 已載入</span>
               <a id="browse-dedicated-workbench" href="./redvisions-workbench/" hidden>開啟校正工作檯 ↗</a>
             </div>
           </header>
           <nav class="browse-filters" aria-label="卡牌分類篩選">
-            <button type="button" class="is-active" data-browse-filter="all">全部 <span>78</span></button>
-            <button type="button" data-browse-filter="major">大阿爾克那 <span>22</span></button>
-            <button type="button" data-browse-filter="wands">權杖 <span>14</span></button>
-            <button type="button" data-browse-filter="cups">聖杯 <span>14</span></button>
-            <button type="button" data-browse-filter="swords">寶劍 <span>14</span></button>
-            <button type="button" data-browse-filter="pentacles">錢幣 <span>14</span></button>
+            <button type="button" class="is-active" data-browse-filter="all">全部 <span>—</span></button>
+            <button type="button" data-browse-filter="major">大阿爾克那 <span>—</span></button>
+            <button type="button" data-browse-filter="wands">權杖 <span>—</span></button>
+            <button type="button" data-browse-filter="cups">聖杯 <span>—</span></button>
+            <button type="button" data-browse-filter="swords">寶劍 <span>—</span></button>
+            <button type="button" data-browse-filter="pentacles">錢幣 <span>—</span></button>
           </nav>
           <div id="browse-card-grid" class="browse-card-grid" aria-live="polite">
-            <p class="browse-loading">正在整理 78 張牌面…</p>
+            <p class="browse-loading">正在整理完整牌面…</p>
           </div>
         </section>
 
@@ -204,6 +205,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260825-02"></script>
+    <script type="module" src="./app.js?v=20260830-01"></script>
   </body>
 </html>

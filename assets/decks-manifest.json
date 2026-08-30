@@ -7,22 +7,27 @@
       "header": "THE UNVEILED TAROT",
       "kicker": "DREAM, SYMBOL & REVELATION",
       "title": "THE UNVEILED<br /><em>Tarot</em>",
-      "description": "硬紙盒外套與可滑出的內抽屜，以五張實拍照片重建並納入同一套召喚舞台。",
+      "description": "硬紙盒外套、可滑出的內抽屜與完整八十張已校正牌面，包含 The Mob 與 The Puppeteer 兩張獨有大牌。",
       "structure": "SLIPCASE + DRAWER",
-      "cards": "尚未提供獨立牌面",
-      "basis": "5 PHOTOS",
-      "hasCards": false,
+      "cards": "LXXX / LXXX",
+      "basis": "86 PHOTOS",
+      "hasCards": true,
       "openLabel": "拉出內盒",
       "closeLabel": "收回內盒",
+      "cardManifest": "./unveiled/cards-manifest.json",
+      "workbench": "../unveiled-workbench/",
       "textureRoot": "./unveiled/textures/",
+      "textureVersion": "20260830-01",
       "textureFiles": [
         "front.jpg",
         "back.jpg",
         "left.jpg",
         "right.jpg",
         "top.jpg",
-        "drawer.jpg"
-      ]
+        "drawer.jpg",
+        "../card-back.webp"
+      ],
+      "cardBack": "../card-back.webp"
     },
     {
       "id": "woodland",
@@ -76,6 +81,7 @@
       "openLabel": "打開磁吸書型盒",
       "closeLabel": "闔上磁吸書型盒",
       "cardManifest": "./redvisions/cards-manifest.json",
+      "workbench": "../redvisions-workbench/",
       "textureRoot": "./redvisions/textures/",
       "textureVersion": "20260825-01",
       "textureFiles": [

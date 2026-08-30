@@ -25,7 +25,7 @@ const LEGACY_CARD_MANIFEST_CANDIDATES = [
   "./assets/cards-manifest.json",
   "./cards-manifest.json",
 ];
-const CARD_ASSET_VERSION = "manifest-pool-20260825-01";
+const CARD_ASSET_VERSION = "manifest-pool-20260830-01";
 
 function escapeSvgText(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -102,9 +102,16 @@ function normalizeCardCatalog(payload, manifestUrl = null, deckKey = "woodland")
   return sourceCards
     .map((card, originalIndex) => ({ card, originalIndex }))
     .sort((a, b) => Number(a.card.index ?? a.card.order ?? a.originalIndex) - Number(b.card.index ?? b.card.order ?? b.originalIndex))
-    .slice(0, 78)
     .map(({ card }, index) => {
-      const fallback = fallbackCards[index];
+      const fallback = fallbackCards[index] ?? {
+        id: `${deckKey}-${String(index).padStart(2, "0")}`,
+        index,
+        numeral: String(index),
+        name: `CARD ${String(index).padStart(2, "0")}`,
+        nameZh: "",
+        suit: "",
+        rank: "",
+      };
       const file = card.file ?? card.filename ?? card.path ?? card.front_file ?? card.front ?? card.texturePath ?? card.texture ?? card.image?.front ?? card.image ?? null;
       const thumbnailFile = card.thumbnail ?? card.thumb ?? card.preview ?? card.image?.thumbnail ?? null;
       const normalized = {
@@ -165,15 +172,19 @@ const DEFAULT_DECKS = {
     header: "THE UNVEILED TAROT",
     kicker: "DREAM, SYMBOL & REVELATION",
     title: "THE UNVEILED<br /><em>Tarot</em>",
-    description: "硬紙盒外套與可滑出的內抽屜，以五張實拍照片重建並納入同一套召喚舞台。",
+    description: "硬紙盒外套、可滑出的內抽屜與完整八十張已校正牌面，包含 The Mob 與 The Puppeteer 兩張獨有大牌。",
     structure: "SLIPCASE + DRAWER",
-    cards: "尚未提供獨立牌面",
-    basis: "5 PHOTOS",
-    hasCards: false,
+    cards: "LXXX / LXXX",
+    basis: "86 PHOTOS",
+    hasCards: true,
     openLabel: "拉出內盒",
     closeLabel: "收回內盒",
     textureRoot: "./assets/unveiled/textures/",
-    textureFiles: ["front.jpg", "back.jpg", "left.jpg", "right.jpg", "top.jpg", "drawer.jpg"],
+    cardManifest: "./assets/unveiled/cards-manifest.json",
+    workbench: "./unveiled-workbench/",
+    textureVersion: "20260830-01",
+    textureFiles: ["front.jpg", "back.jpg", "left.jpg", "right.jpg", "top.jpg", "drawer.jpg", "../card-back.webp"],
+    cardBack: "../card-back.webp",
   },
   woodland: {
     number: "02",
@@ -210,6 +221,7 @@ const DEFAULT_DECKS = {
     openLabel: "打開磁吸書型盒",
     closeLabel: "闔上磁吸書型盒",
     cardManifest: "./assets/redvisions/cards-manifest.json",
+    workbench: "./redvisions-workbench/",
     textureRoot: "./assets/redvisions/textures/",
     textureVersion: "20260825-01",
     textureFiles: [
@@ -237,6 +249,7 @@ function normalizeDeckIndex(payload, manifestUrl = null) {
     const fallback = DEFAULT_DECKS[id] ?? {};
     const merged = { ...fallback, ...deck, id };
     merged.cardManifest = resolveManifestUrl(merged.cardManifest, manifestUrl);
+    merged.workbench = resolveManifestUrl(merged.workbench, manifestUrl);
     merged.textureRoot = resolveManifestUrl(merged.textureRoot, manifestUrl);
     merged.textureFiles = Array.isArray(merged.textureFiles) ? merged.textureFiles : fallback.textureFiles ?? [];
     normalized[id] = merged;
@@ -247,6 +260,7 @@ function normalizeDeckIndex(payload, manifestUrl = null) {
       ...deck,
       id,
       cardManifest: resolveManifestUrl(deck.cardManifest),
+      workbench: resolveManifestUrl(deck.workbench),
       textureRoot: resolveManifestUrl(deck.textureRoot),
     };
   });
@@ -291,6 +305,7 @@ const browsePanel = document.querySelector("#browse-panel");
 const browseCardGrid = document.querySelector("#browse-card-grid");
 const browseDeckTitle = document.querySelector("#browse-deck-title");
 const browseLoadedCount = document.querySelector("#browse-loaded-count");
+const browseTotalCount = document.querySelector("#browse-total-count");
 const browseDedicatedWorkbench = document.querySelector("#browse-dedicated-workbench");
 const browseViewer = document.querySelector("#browse-viewer");
 const browseViewerImage = document.querySelector("#browse-viewer-image");
@@ -303,6 +318,7 @@ const viewMenuPanel = document.querySelector("#view-menu-panel");
 const currentViewLabel = document.querySelector("#current-view-label");
 const cardRail = document.querySelector("#card-rail");
 const cardCatalogToggle = document.querySelector("#card-catalog-toggle");
+const cardCatalogCount = document.querySelector("#card-catalog-count");
 const cardCatalogPanel = document.querySelector("#card-catalog-panel");
 const cardIndex = document.querySelector("#card-index");
 const cardName = document.querySelector("#card-name");
@@ -666,6 +682,7 @@ function buildCardRail() {
     cardRail.append(button);
   });
   cardCatalogToggle.disabled = !cardRailAssetsReady;
+  cardCatalogCount.textContent = `${CARDS.length} 張`;
   updateCardAssetReadiness();
 }
 
@@ -688,6 +705,26 @@ function setBrowseFilter(filter) {
   });
 }
 
+function updateBrowseCounts() {
+  const counts = { all: CARDS.length, major: 0, wands: 0, cups: 0, swords: 0, pentacles: 0 };
+  CARDS.forEach((card) => {
+    const key = getBrowseSuitKey(card);
+    if (Object.hasOwn(counts, key)) counts[key] += 1;
+  });
+  document.querySelectorAll("[data-browse-filter]").forEach((button) => {
+    const count = counts[button.dataset.browseFilter] ?? 0;
+    const label = button.querySelector("span");
+    if (label) label.textContent = String(count);
+  });
+  browseTotalCount.textContent = String(CARDS.length);
+}
+
+function updateDedicatedWorkbenchLink() {
+  const workbench = DECKS[activeDeckKey]?.workbench;
+  browseDedicatedWorkbench.hidden = !workbench;
+  if (workbench) browseDedicatedWorkbench.href = workbench;
+}
+
 function openBrowseViewer(card) {
   const number = String(card.index ?? 0).padStart(2, "0");
   browseViewerImage.src = card.src;
@@ -701,8 +738,9 @@ function openBrowseViewer(card) {
 
 function renderBrowseGrid() {
   if (!CARDS.length || cardCatalogDeckKey !== activeDeckKey) {
-    browseCardGrid.innerHTML = '<p class="browse-loading">正在整理 78 張牌面…</p>';
+    browseCardGrid.innerHTML = '<p class="browse-loading">正在整理完整牌面…</p>';
     browseLoadedCount.textContent = "0";
+    browseTotalCount.textContent = "—";
     return;
   }
   if (browseRenderedDeckKey === activeDeckKey && browseCardGrid.querySelector(".browse-card")) {
@@ -713,6 +751,7 @@ function renderBrowseGrid() {
   browseRenderedDeckKey = activeDeckKey;
   const renderedDeckKey = activeDeckKey;
   browseLoadedCount.textContent = "0";
+  updateBrowseCounts();
   browseCardGrid.replaceChildren();
   let loaded = 0;
   CARDS.forEach((card) => {
@@ -816,9 +855,9 @@ function updateArtifactCopy() {
   cardsModeTab.disabled = !deck.hasCards;
   cardsModeTab.title = deck.hasCards ? "檢視已拍攝牌面" : "需要獨立牌面照片才能啟用";
   browseModeTab.disabled = !deck.hasCards;
-  browseModeTab.title = deck.hasCards ? "一般瀏覽與管理完整 78 張牌" : "需要完整牌面才能啟用";
+  browseModeTab.title = deck.hasCards ? "一般瀏覽與管理完整牌組" : "需要完整牌面才能啟用";
   browseDeckTitle.textContent = deck.header;
-  browseDedicatedWorkbench.hidden = activeDeckKey !== "redvisions";
+  updateDedicatedWorkbenchLink();
   const sequenceHint = isBookDeck(activeDeckKey)
     ? "單擊外盒開啟 · 單擊說明書取出／翻面 · 單擊內卡盒浮出 · 再單擊內卡盒抽牌"
     : "單擊外盒拉出或收回內盒";
@@ -867,7 +906,9 @@ function resetWoodlandInteraction() {
   artifactBrightnessTarget = 1;
   artifactBrightnessCurrent = 1;
   cardsModeTab.disabled = true;
-  cardsModeTab.title = "依序單擊說明書與內卡盒，再單擊抽牌";
+  cardsModeTab.title = isBookDeck(activeDeckKey)
+    ? "依序單擊說明書與內卡盒，再單擊抽牌"
+    : "正在準備完整牌組…";
   inspection.removeAttribute("aria-busy");
   inspection.classList.remove("is-inner-box-ready", "is-card-summoning", "is-card-focus", "is-card-back", "is-card-side");
   delete inspection.dataset.woodlandPhase;
@@ -878,11 +919,6 @@ function resetWoodlandInteraction() {
 function enterInspection(deckKey, initialMode = "box") {
   if (!DECKS[deckKey]) return;
   activeDeckKey = deckKey;
-  if (DECKS[deckKey].hasCards) {
-    void ensureDeckCardExperience(deckKey).then(() => {
-      if (activeDeckKey === deckKey && activeMode === "browse") renderBrowseGrid();
-    });
-  }
   updateArtifactCopy();
   if (isBookDeck(deckKey)) {
     applyBookDeckAppearance(deckKey);
@@ -896,6 +932,17 @@ function enterInspection(deckKey, initialMode = "box") {
   inspection.setAttribute("aria-hidden", "false");
   invokeAge = 0;
   resetWoodlandInteraction();
+  if (DECKS[deckKey].hasCards) {
+    void ensureDeckCardExperience(deckKey).then((cards) => {
+      if (activeDeckKey !== deckKey) return;
+      if (!isBookDeck(deckKey)) {
+        cardRevealComplete = cards.length > 0;
+        cardsModeTab.disabled = cards.length === 0;
+        cardsModeTab.title = cards.length > 0 ? `抽取完整 ${cards.length} 張牌組` : "牌組載入失敗";
+      }
+      if (activeMode === "browse") renderBrowseGrid();
+    });
+  }
   setBoxOpen(0);
   setMode(initialMode === "browse" ? "browse" : "box", false);
   activateView("front");
@@ -939,7 +986,7 @@ function setMode(mode, userInitiated = false) {
   cardControls.setAttribute("aria-hidden", cardsActive ? "false" : "true");
   browsePanel.setAttribute("aria-hidden", browseActive ? "false" : "true");
   inspection.classList.toggle("is-browse-mode", browseActive);
-  cardsGroup.visible = cardsActive && isBookDeck(activeDeckKey);
+  cardsGroup.visible = cardsActive && DECKS[activeDeckKey].hasCards;
   controls.autoRotate = false;
   controls.enabled = !browseActive;
 
@@ -948,7 +995,7 @@ function setMode(mode, userInitiated = false) {
     setCardCatalogOpen(false);
     cardsGroup.visible = false;
     browseDeckTitle.textContent = DECKS[activeDeckKey].header;
-    browseDedicatedWorkbench.hidden = activeDeckKey !== "redvisions";
+    updateDedicatedWorkbenchLink();
     artifactBrightnessTarget = 0.16;
     renderBrowseGrid();
   } else if (cardsActive) {
@@ -969,7 +1016,10 @@ function setMode(mode, userInitiated = false) {
       button.classList.toggle("is-active", button.dataset.view === "front");
     });
     queueCamera([0, 0.18, 4.55], [0, 0.01, 0.4], 760);
-    selectCard(selectedCard, false);
+    const cardToSelect = !isBookDeck(activeDeckKey) && userInitiated
+      ? Math.floor(Math.random() * CARDS.length)
+      : selectedCard;
+    selectCard(cardToSelect, false);
     triggerMysticEffect(0.35);
   } else {
     setCardCatalogOpen(false);
@@ -1084,7 +1134,12 @@ function setBoxOpen(value, { sound = false } = {}) {
   openButton.querySelector("span").textContent = open ? deck.closeLabel : deck.openLabel;
   openButton.querySelector("i").textContent = open ? "↙" : "↗";
   if (sound) playBoxSound(open, activeDeckKey);
-  if (sound) showBoxFeedback(open ? "外盒正在開啟，完成後點擊說明書" : "外盒正在闔上", open ? "active" : "muted");
+  if (sound) {
+    const message = isBookDeck(activeDeckKey)
+      ? (open ? "外盒正在開啟，完成後點擊說明書" : "外盒正在闔上")
+      : (open ? "內抽屜正在滑出" : "內抽屜正在收回");
+    showBoxFeedback(message, open ? "active" : "muted");
+  }
 }
 
 
@@ -1666,6 +1721,14 @@ for (let index = 0; index < 8; index += 1) {
   layer.castShadow = true;
   unveiledDrawer.add(layer);
 }
+unveiledRoot.traverse((object) => {
+  if (!object.isMesh) return;
+  const materials = Array.isArray(object.material) ? object.material : [object.material];
+  materials.forEach((material) => {
+    if (!material?.color || woodlandDisplayMaterialState.has(material)) return;
+    woodlandDisplayMaterialState.set(material, material.color.clone());
+  });
+});
 
 
 function roundedShape(width, height, radius) {
@@ -2206,7 +2269,7 @@ function handleInnerBoxClick() {
     return;
   }
   if (woodlandPhase === WOODLAND_PHASE.INNER_READY) {
-    showBoxFeedback("已選取內卡盒：正在展開 78 張牌面");
+    showBoxFeedback(`已選取內卡盒：正在展開 ${CARDS.length || 78} 張牌面`);
     beginCardSummoning();
     return;
   }
@@ -2254,7 +2317,7 @@ function completeCardSummoning() {
   cardSummonProgress = 1;
   cardRevealComplete = true;
   cardsModeTab.disabled = false;
-  cardsModeTab.title = "檢視完整七十八張牌面";
+  cardsModeTab.title = `檢視完整 ${CARDS.length} 張牌面`;
   inspection.classList.remove("is-card-summoning");
   inspection.removeAttribute("aria-busy");
   selectCard(randomIndex, false);
@@ -2351,6 +2414,12 @@ function enterBoxModeDuringReturn(now) {
   artifactTargetScale = 1;
   artifactTargetPosition.set(0, 0, 0);
   queueCamera([0.16, 0.1, 4.55], [0, 0, 0.25], 700);
+  if (!isBookDeck(activeDeckKey)) {
+    setBoxOpen(0, { sound: true });
+    setDeckReturnStage("slipcase", now);
+    showBoxFeedback("牌卡已聚攏，正在收回內抽屜", "waiting", 0);
+    return;
+  }
   setDeckReturnStage("inner-box", now);
   showBoxFeedback("牌卡已聚攏，正在收回第二層牌盒", "waiting", 0);
 }
@@ -2358,7 +2427,7 @@ function enterBoxModeDuringReturn(now) {
 
 function finishDeckReturn() {
   cardsGroup.visible = false;
-  cardRevealComplete = false;
+  cardRevealComplete = !isBookDeck(activeDeckKey) && DECKS[activeDeckKey].hasCards;
   artifactBrightnessTarget = 1;
   artifactTargetScale = 1;
   artifactTargetPosition.set(0, 0, 0);
@@ -2366,9 +2435,17 @@ function finishDeckReturn() {
   inspection.dataset.woodlandPhase = woodlandPhase;
   resetCardTransitionState();
   openButton.disabled = false;
-  cardsModeTab.disabled = true;
-  cardsModeTab.title = "依序單擊說明書與內卡盒，再單擊抽牌";
-  showBoxFeedback("牌卡、第二層牌盒與說明書已歸位，磁吸書型盒已闔上", "active", 3200);
+  cardsModeTab.disabled = isBookDeck(activeDeckKey);
+  cardsModeTab.title = isBookDeck(activeDeckKey)
+    ? "依序單擊說明書與內卡盒，再單擊抽牌"
+    : `抽取完整 ${CARDS.length} 張牌組`;
+  showBoxFeedback(
+    isBookDeck(activeDeckKey)
+      ? "牌卡、第二層牌盒與說明書已歸位，磁吸書型盒已闔上"
+      : "牌卡與內抽屜已收回牌盒",
+    "active",
+    3200
+  );
 }
 
 
@@ -2386,6 +2463,10 @@ function updateCardTransitions(now) {
   if (deckReturnStage === "cards-to-light") {
     deckReturnProgress = THREE.MathUtils.clamp((now - deckReturnStageStartedAt) / CARD_RETURN_BEAM_DURATION_MS, 0, 1);
     if (deckReturnProgress >= 1) enterBoxModeDuringReturn(now);
+    return;
+  }
+  if (deckReturnStage === "slipcase" && unveiledOpenCurrent <= 0.015) {
+    finishDeckReturn();
     return;
   }
   if (deckReturnStage === "inner-box" && innerBoxExtractedCurrent <= 0.045) {
