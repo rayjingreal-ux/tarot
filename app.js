@@ -170,6 +170,8 @@ const DEFAULT_DECKS = {
   unveiled: {
     number: "01",
     header: "THE UNVEILED TAROT",
+    selectorCover: "front.jpg",
+    selectorMeta: "COLLECTION 01 · 80 CARDS",
     kicker: "DREAM, SYMBOL & REVELATION",
     title: "THE UNVEILED<br /><em>Tarot</em>",
     description: "硬紙盒外套、可滑出的內抽屜與完整八十張已校正牌面，包含 The Mob 與 The Puppeteer 兩張獨有大牌。",
@@ -190,6 +192,8 @@ const DEFAULT_DECKS = {
   woodland: {
     number: "02",
     header: "WOODLAND FAIRY TALE TAROT",
+    selectorCover: "outer-front.jpg",
+    selectorMeta: "COLLECTION 02 · 78 CARDS",
     kicker: "MAGIC, FOLKLORE & PLANTS",
     title: "WOODLAND<br /><em>Fairy Tale</em> TAROT",
     description: "磁吸書型外盒、可取出的說明書、內卡盒與完整七十八張牌面，依照 411495–411497 的拆件狀態重建。",
@@ -214,6 +218,8 @@ const DEFAULT_DECKS = {
   redvisions: {
     number: "03",
     header: "RED VISIONS TAROT",
+    selectorCover: "outer-front.jpg",
+    selectorMeta: "COLLECTION 03 · 78 CARDS",
     kicker: "LIBER SOMNIA · DREAM VISIONS",
     title: "RED VISIONS<br /><em>Tarot</em>",
     description: "深紅磁吸書型牌盒、說明書、內卡盒與完整七十八張已校正牌面，依實拍素材重建。",
@@ -239,6 +245,8 @@ const DEFAULT_DECKS = {
   prosepoem: {
     number: "04",
     header: "PROSE POEM TAROT",
+    selectorCover: "outer-front.jpg",
+    selectorMeta: "COLLECTION 04 · 80 / 83",
     kicker: "LIGHT, FLIGHT & POETIC IMAGE",
     title: "PROSE POEM<br /><em>Tarot</em>",
     description: "暖金磁吸書型盒、可取出的說明書與直置牌托；牌盒標示 83 張，現有素材提供 80 張校正版牌面，並保留教皇與寶劍十各一張替代圖稿。",
@@ -363,7 +371,198 @@ const redrawCardButton = document.querySelector("#redraw-card");
 const returnDeckButton = document.querySelector("#return-deck");
 const soundToggle = document.querySelector("#sound-toggle");
 const boxSequenceHint = document.querySelector(".box-sequence-hint");
+const approachButton = document.querySelector("#approach-button");
+const retreatButton = document.querySelector("#retreat-button");
+const closeInspectionButton = document.querySelector("#close-inspection");
+const deckCarousel = document.querySelector("#deck-carousel");
+const deckCarouselTrack = document.querySelector("#deck-carousel-track");
+const deckCarouselPrevious = document.querySelector("#deck-carousel-previous");
+const deckCarouselNext = document.querySelector("#deck-carousel-next");
+const deckCarouselCounter = document.querySelector("#deck-carousel-counter");
+const deckCarouselTitle = document.querySelector("#deck-carousel-title");
+const deckCarouselProgress = document.querySelector("#deck-carousel-progress");
+const deckCarouselStatus = document.querySelector("#deck-carousel-status");
+const deckWorkbenchNav = document.querySelector("#deck-workbench-nav");
+const deckWorkbenchLink = document.querySelector("#deck-workbench-link");
+const deckWorkbenchNumber = document.querySelector("#deck-workbench-number");
+const deckWorkbenchTitle = document.querySelector("#deck-workbench-title");
+const deckEntries = Object.entries(DECKS);
+let deckCarouselCurrentIndex = 0;
+let deckCarouselAnnouncementTimer = null;
+let inspectionReturnFocus = null;
 let feedbackResetTimer = null;
+
+function getDeckCarouselSlides() {
+  return [...deckCarouselTrack.querySelectorAll(".tabletop-deck[data-deck]")];
+}
+
+function getDeckSelectorCover(deckKey, deck) {
+  const selectorCover = deck.selectorCover ?? (deck.model === "slipcase" ? "front.jpg" : "outer-front.jpg");
+  return getDeckTextureUrl(deckKey, selectorCover);
+}
+
+function buildDeckCarousel() {
+  const fragment = document.createDocumentFragment();
+  deckEntries.forEach(([deckKey, deck], index) => {
+    const button = document.createElement("button");
+    const safeDeckKey = deckKey.replace(/[^a-z0-9_-]/gi, "-");
+    button.id = `deck-carousel-slide-${index + 1}-${safeDeckKey}`;
+    button.className = `tabletop-deck deck-${safeDeckKey}`;
+    button.type = "button";
+    button.dataset.deck = deckKey;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    button.setAttribute("aria-label", `第 ${index + 1} 副，共 ${deckEntries.length} 副：召喚 ${deck.header}`);
+    button.style.setProperty("--deck-cover", `url(${JSON.stringify(getDeckSelectorCover(deckKey, deck))})`);
+
+    const aura = document.createElement("i");
+    aura.className = "deck-aura";
+    aura.setAttribute("aria-hidden", "true");
+    const object = document.createElement("span");
+    object.className = "deck-object";
+    object.setAttribute("aria-hidden", "true");
+    const name = document.createElement("span");
+    name.className = "deck-name";
+    const meta = document.createElement("small");
+    meta.textContent = deck.selectorMeta ?? `COLLECTION ${deck.number} · ${deck.cards}`;
+    const title = document.createElement("b");
+    title.textContent = deck.header;
+    const action = document.createElement("em");
+    action.textContent = "點擊召喚";
+    name.append(meta, title, action);
+    button.append(aura, object, name);
+    fragment.append(button);
+  });
+  deckCarouselTrack.replaceChildren(fragment);
+
+  const deckCount = String(deckEntries.length).padStart(2, "0");
+  document.querySelector("#archive-deck-count").textContent = `${deckCount} DECKS · LOCAL ARCHIVE`;
+  document.querySelector("#archive-deck-summary").textContent = `${deckEntries.length} 副牌 · 本機素材重建`;
+}
+
+function updateDeckWorkbench(deckKey) {
+  const deck = DECKS[deckKey];
+  if (!deck) return;
+  deckWorkbenchNumber.textContent = deck.number;
+  deckWorkbenchTitle.textContent = deck.header;
+  deckWorkbenchLink.dataset.browseDeck = deckKey;
+  if (deck.hasCards) {
+    deckWorkbenchLink.href = `./?deck=${encodeURIComponent(deckKey)}&mode=browse`;
+    deckWorkbenchLink.removeAttribute("aria-disabled");
+    deckWorkbenchLink.tabIndex = 0;
+    deckWorkbenchLink.setAttribute("aria-label", `一般瀏覽 ${deck.header}`);
+  } else {
+    deckWorkbenchLink.removeAttribute("href");
+    deckWorkbenchLink.setAttribute("aria-disabled", "true");
+    deckWorkbenchLink.tabIndex = -1;
+    deckWorkbenchLink.setAttribute("aria-label", `${deck.header} 尚無可瀏覽牌面`);
+  }
+}
+
+function getDeckCarouselBehavior() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
+function resetCabinetScroll() {
+  cabinet.scrollTo({ left: 0, top: 0, behavior: "auto" });
+}
+
+function focusWhenVisible(target, timeout = 5000) {
+  const startedAt = performance.now();
+  const attemptFocus = () => {
+    const element = typeof target === "function" ? target() : target;
+    if (!element?.isConnected) return;
+    const style = getComputedStyle(element);
+    const focusable = style.visibility !== "hidden"
+      && style.display !== "none"
+      && !element.disabled
+      && !element.closest("[inert]");
+    if (focusable) {
+      element.focus({ preventScroll: true });
+      if (document.activeElement === element) {
+        resetCabinetScroll();
+        return;
+      }
+    }
+    if (performance.now() - startedAt < timeout) requestAnimationFrame(attemptFocus);
+  };
+  requestAnimationFrame(attemptFocus);
+}
+
+function centerDeckCarouselSlide(slide) {
+  const left = slide.offsetLeft - (deckCarouselTrack.clientWidth - slide.offsetWidth) / 2;
+  deckCarouselTrack.scrollTo({ left, behavior: getDeckCarouselBehavior() });
+  resetCabinetScroll();
+}
+
+function setDeckCarouselCurrent(index, { scroll = false, focus = false, announce = false } = {}) {
+  const slides = getDeckCarouselSlides();
+  if (!slides.length) return;
+  const nextIndex = Math.max(0, Math.min(index, slides.length - 1));
+  deckCarouselCurrentIndex = nextIndex;
+  slides.forEach((slide, slideIndex) => {
+    const current = slideIndex === nextIndex;
+    slide.classList.toggle("is-carousel-current", current);
+    slide.tabIndex = current ? 0 : -1;
+    if (current) slide.setAttribute("aria-current", "true");
+    else slide.removeAttribute("aria-current");
+  });
+
+  const currentSlide = slides[nextIndex];
+  const deck = DECKS[currentSlide.dataset.deck];
+  deckCarouselCounter.textContent = `${String(nextIndex + 1).padStart(2, "0")} / ${String(slides.length).padStart(2, "0")}`;
+  deckCarouselTitle.textContent = deck.header;
+  deckCarouselProgress.style.width = `${((nextIndex + 1) / slides.length) * 100}%`;
+  deckCarouselPrevious.disabled = nextIndex === 0;
+  deckCarouselNext.disabled = nextIndex === slides.length - 1;
+  updateDeckWorkbench(currentSlide.dataset.deck);
+
+  if (focus) currentSlide.focus({ preventScroll: true });
+  if (scroll) centerDeckCarouselSlide(currentSlide);
+  if (announce) deckCarouselStatus.textContent = `第 ${nextIndex + 1} 副，共 ${slides.length} 副：${deck.header}`;
+}
+
+function findCenteredDeckIndex() {
+  const slides = getDeckCarouselSlides();
+  if (!slides.length) return 0;
+  const trackRect = deckCarouselTrack.getBoundingClientRect();
+  const trackCenter = trackRect.left + trackRect.width / 2;
+  return slides.reduce((closestIndex, slide, index) => {
+    const rect = slide.getBoundingClientRect();
+    const distance = Math.abs(rect.left + rect.width / 2 - trackCenter);
+    const closestRect = slides[closestIndex].getBoundingClientRect();
+    const closestDistance = Math.abs(closestRect.left + closestRect.width / 2 - trackCenter);
+    return distance < closestDistance ? index : closestIndex;
+  }, 0);
+}
+
+function syncDeckCarousel({ announce = false, reconcileFocus = false } = {}) {
+  const nextIndex = findCenteredDeckIndex();
+  setDeckCarouselCurrent(nextIndex, { announce });
+  if (!reconcileFocus || !deckCarouselTrack.contains(document.activeElement)) return;
+  const currentSlide = getDeckCarouselSlides()[nextIndex];
+  if (document.activeElement !== currentSlide) currentSlide.focus({ preventScroll: true });
+}
+
+function queueDeckCarouselSync() {
+  window.clearTimeout(deckCarouselAnnouncementTimer);
+  deckCarouselAnnouncementTimer = window.setTimeout(() => {
+    syncDeckCarousel({ announce: true, reconcileFocus: true });
+  }, 160);
+}
+
+function moveDeckCarousel(step, { focus = false } = {}) {
+  setDeckCarouselCurrent(deckCarouselCurrentIndex + step, { scroll: true, focus, announce: true });
+}
+
+function setDeckPickerInteractive(interactive) {
+  deckCarousel.inert = !interactive;
+  deckWorkbenchNav.inert = !interactive;
+}
+
+buildDeckCarousel();
+setDeckCarouselCurrent(0);
+setDeckPickerInteractive(false);
 
 let activeDeckKey = "woodland";
 function isBookDeck(deckKey = activeDeckKey) {
@@ -450,28 +649,87 @@ buildDomParticles(document.querySelector("#dust"), 52, false);
 buildDomParticles(document.querySelector("#inspection-particles"), 82, true);
 cardCatalogToggle.disabled = true;
 
-document.querySelector("#approach-button").addEventListener("click", () => {
+approachButton.addEventListener("click", () => {
+  resetCabinetScroll();
   archive.dataset.phase = "choose";
+  setDeckPickerInteractive(true);
   scheduleSceneViewUpdate();
-});
-
-document.querySelector("#retreat-button").addEventListener("click", () => {
-  archive.dataset.phase = "entrance";
-  scheduleSceneViewUpdate();
-});
-
-document.querySelectorAll(".tabletop-deck[data-deck]").forEach((button) => {
-  button.addEventListener("click", () => enterInspection(button.dataset.deck));
-});
-
-document.querySelectorAll("[data-browse-deck]").forEach((link) => {
-  link.addEventListener("click", (event) => {
-    event.preventDefault();
-    enterInspection(link.dataset.browseDeck, "browse");
+  focusWhenVisible(() => {
+    if (archive.dataset.phase !== "choose" || inspectionVisible) return null;
+    const currentSlide = getDeckCarouselSlides()[deckCarouselCurrentIndex];
+    return currentSlide?.disabled ? deckCarouselTrack : currentSlide;
   });
 });
 
-document.querySelector("#close-inspection").addEventListener("click", leaveInspection);
+retreatButton.addEventListener("click", () => {
+  archive.dataset.phase = "entrance";
+  setDeckPickerInteractive(false);
+  scheduleSceneViewUpdate();
+  focusWhenVisible(approachButton);
+});
+
+deckCarouselTrack.addEventListener("click", (event) => {
+  const button = event.target.closest(".tabletop-deck[data-deck]");
+  if (!button || button.disabled) return;
+  enterInspection(button.dataset.deck);
+});
+
+deckCarouselTrack.addEventListener("focusin", (event) => {
+  const button = event.target.closest(".tabletop-deck[data-deck]");
+  if (!button) return;
+  const index = getDeckCarouselSlides().indexOf(button);
+  if (index >= 0) setDeckCarouselCurrent(index, { scroll: button.getAttribute("aria-current") !== "true" });
+});
+
+deckCarouselTrack.addEventListener("keydown", (event) => {
+  if (archive.dataset.phase !== "choose" || inspectionVisible) return;
+  const focusedSlide = event.target.closest(".tabletop-deck[data-deck]");
+  if ((event.key === "Enter" || event.key === " ") && focusedSlide && !focusedSlide.disabled) {
+    event.preventDefault();
+    event.stopPropagation();
+    const currentSlide = getDeckCarouselSlides()[deckCarouselCurrentIndex] ?? focusedSlide;
+    enterInspection(currentSlide.dataset.deck);
+    return;
+  }
+  let nextIndex = null;
+  if (event.key === "ArrowLeft") nextIndex = deckCarouselCurrentIndex - 1;
+  if (event.key === "ArrowRight") nextIndex = deckCarouselCurrentIndex + 1;
+  if (event.key === "Home") nextIndex = 0;
+  if (event.key === "End") nextIndex = getDeckCarouselSlides().length - 1;
+  if (nextIndex === null) return;
+  event.preventDefault();
+  event.stopPropagation();
+  setDeckCarouselCurrent(nextIndex, { scroll: true, focus: true, announce: true });
+});
+
+deckCarouselTrack.addEventListener("scroll", queueDeckCarouselSync, { passive: true });
+deckCarouselTrack.addEventListener("scrollend", () => {
+  window.clearTimeout(deckCarouselAnnouncementTimer);
+  syncDeckCarousel({ announce: true, reconcileFocus: true });
+});
+deckCarouselTrack.addEventListener("wheel", (event) => {
+  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  deckCarouselTrack.scrollBy({ left: event.deltaY, behavior: "auto" });
+}, { passive: false });
+
+deckCarouselPrevious.addEventListener("click", () => {
+  moveDeckCarousel(-1);
+  if (deckCarouselPrevious.disabled) getDeckCarouselSlides()[deckCarouselCurrentIndex]?.focus({ preventScroll: true });
+});
+deckCarouselNext.addEventListener("click", () => {
+  moveDeckCarousel(1);
+  if (deckCarouselNext.disabled) getDeckCarouselSlides()[deckCarouselCurrentIndex]?.focus({ preventScroll: true });
+});
+
+deckWorkbenchLink.addEventListener("click", (event) => {
+  event.preventDefault();
+  if (deckWorkbenchLink.getAttribute("aria-disabled") === "true") return;
+  enterInspection(deckWorkbenchLink.dataset.browseDeck, "browse");
+});
+
+closeInspectionButton.addEventListener("click", leaveInspection);
 
 document.querySelectorAll(".mode-tab").forEach((button) => {
   button.addEventListener("click", () => setMode(button.dataset.mode, true));
@@ -559,7 +817,7 @@ function clampSceneValue(value, min, max) {
 }
 
 function isSceneControlTarget(target) {
-  return target instanceof Element && Boolean(target.closest("button, a"));
+  return target instanceof Element && Boolean(target.closest("button, a, .deck-carousel, .deck-workbench-nav"));
 }
 
 function resetSceneDragAnchor(pointerId) {
@@ -671,7 +929,10 @@ cabinet.addEventListener("wheel", (event) => {
   scheduleSceneViewUpdate();
 }, { passive: false });
 
-window.addEventListener("resize", scheduleSceneViewUpdate);
+window.addEventListener("resize", () => {
+  scheduleSceneViewUpdate();
+  requestAnimationFrame(() => setDeckCarouselCurrent(deckCarouselCurrentIndex, { scroll: true }));
+});
 scheduleSceneViewUpdate();
 
 
@@ -962,6 +1223,10 @@ function resetWoodlandInteraction() {
 
 function enterInspection(deckKey, initialMode = "box") {
   if (!DECKS[deckKey]) return;
+  const currentFocus = document.activeElement;
+  inspectionReturnFocus = currentFocus instanceof HTMLElement && cabinet.contains(currentFocus)
+    ? currentFocus
+    : getDeckCarouselSlides()[deckCarouselCurrentIndex] ?? approachButton;
   activeDeckKey = deckKey;
   inspection.dataset.packageType = DECKS[deckKey].packageType ?? DECKS[deckKey].model ?? "artifact";
   updateArtifactCopy();
@@ -973,6 +1238,8 @@ function enterInspection(deckKey, initialMode = "box") {
   woodlandRoot.visible = isBookDeck(deckKey);
   unveiledRoot.visible = deckKey === "unveiled";
   inspectionVisible = true;
+  inspection.inert = false;
+  cabinet.inert = true;
   inspection.classList.add("is-visible", "is-summoning");
   inspection.setAttribute("aria-hidden", "false");
   invokeAge = 0;
@@ -993,12 +1260,15 @@ function enterInspection(deckKey, initialMode = "box") {
   activateView("front");
   triggerMysticEffect(0.42);
   playInvocationSound();
+  focusWhenVisible(() => inspectionVisible ? closeInspectionButton : null);
   window.setTimeout(() => inspection.classList.remove("is-summoning"), 1900);
 }
 
 
 function leaveInspection() {
   setViewMenuOpen(false);
+  const returnTarget = inspectionReturnFocus?.isConnected ? inspectionReturnFocus : approachButton;
+  inspectionReturnFocus = null;
   if (woodlandPhase === WOODLAND_PHASE.SUMMONING) {
     woodlandPhase = WOODLAND_PHASE.INNER_READY;
     cardSummonStartedAt = 0;
@@ -1009,7 +1279,11 @@ function leaveInspection() {
   inspection.classList.remove("is-card-summoning", "is-card-focus", "is-card-back", "is-card-side");
   resetCardTransitionState();
   inspection.removeAttribute("aria-busy");
+  cabinet.inert = false;
+  setDeckPickerInteractive(archive.dataset.phase === "choose");
+  inspection.inert = true;
   inspection.setAttribute("aria-hidden", "true");
+  focusWhenVisible(returnTarget);
   if (browseViewer.open) browseViewer.close();
   controls.autoRotate = false;
   controls.enabled = true;
@@ -2959,10 +3233,14 @@ const resizeObserver = new ResizeObserver(([entry]) => {
 resizeObserver.observe(stage);
 
 loading.classList.add("is-hidden");
+const deckCarouselHadFocus = document.activeElement === deckCarouselTrack;
 document.querySelectorAll(".tabletop-deck[data-deck]").forEach((button) => {
   button.disabled = false;
   button.setAttribute("aria-busy", "false");
 });
+deckCarouselTrack.tabIndex = -1;
+setDeckCarouselCurrent(deckCarouselCurrentIndex);
+if (deckCarouselHadFocus) getDeckCarouselSlides()[deckCarouselCurrentIndex]?.focus({ preventScroll: true });
 cardsGroup.visible = false;
 setBoxOpen(0);
 
@@ -2971,5 +3249,7 @@ const requestedDeck = requestedParameters.get("deck");
 const requestedMode = requestedParameters.get("mode");
 if (DECKS[requestedDeck]) {
   archive.dataset.phase = "choose";
+  const requestedDeckIndex = deckEntries.findIndex(([deckKey]) => deckKey === requestedDeck);
+  if (requestedDeckIndex >= 0) setDeckCarouselCurrent(requestedDeckIndex, { scroll: true });
   enterInspection(requestedDeck, requestedMode);
 }

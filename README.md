@@ -9,6 +9,7 @@ GitHub Pages：<https://rayjingreal-ux.github.io/tarot/>
 ## 目前功能
 
 - 沉浸式藏書室入口與 3D 鑑賞舞台
+- 由牌組 manifest 動態建立的左右滑動牌盒選單，支援觸控、滑鼠滾輪、方向鍵與未來新增牌組
 - 牌盒、說明書、第二層牌盒／直接牌堆的分段互動
 - The Unveiled 完整 80 張校正版牌面與實體牌背（以 07 號為透視基準，保留四角圓角透明去背）
 - Woodland、Red Visions 各 78 張完整牌面

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#050807" />
     <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
     <title>Arcana Cabinet｜塔羅藏書室</title>
-    <link rel="stylesheet" href="./styles.css?v=20260831-01" />
+    <link rel="stylesheet" href="./styles.css?v=20260901-01" />
     <script type="importmap">
       {
         "imports": {
@@ -35,7 +35,7 @@
 
         <header class="archive-header">
           <a class="sigil" href="#" aria-label="塔羅藏書室首頁"><i>✦</i><span>ARCANA<br />CABINET</span></a>
-        <div class="header-meta"><span>PRIVATE COLLECTION</span><b>04 DECKS · LOCAL ARCHIVE</b></div>
+        <div class="header-meta"><span>PRIVATE COLLECTION</span><b id="archive-deck-count">04 DECKS · LOCAL ARCHIVE</b></div>
         </header>
 
         <div class="scene-copy entrance-copy">
@@ -49,39 +49,26 @@
         <div class="scene-copy choose-copy" aria-live="polite">
           <p class="kicker">THE CABINET IS LISTENING</p>
           <h2>選擇一副牌</h2>
-          <p>點選發光標記。藏品會離開書櫃，進入獨立的深色鑑賞空間。</p>
+          <p>左右滑動或使用方向鍵選取牌盒，再點擊召喚藏品。</p>
           <button id="retreat-button" class="text-button" type="button">← 回到門口</button>
         </div>
 
-        <div class="tabletop-decks" aria-label="牌桌藏品">
-          <button class="tabletop-deck deck-unveiled" data-deck="unveiled" type="button" aria-label="召喚 The Unveiled Tarot" aria-busy="true" disabled>
-            <i class="deck-aura" aria-hidden="true"></i>
-            <span class="deck-object" aria-hidden="true"></span>
-            <span class="deck-name"><small>COLLECTION 01 · 80 CARDS</small><b>THE UNVEILED TAROT</b><em>點擊召喚</em></span>
-          </button>
-          <button class="tabletop-deck deck-woodland" data-deck="woodland" type="button" aria-label="召喚 Woodland Fairy Tale Tarot" aria-busy="true" disabled>
-            <i class="deck-aura" aria-hidden="true"></i>
-            <span class="deck-object" aria-hidden="true"></span>
-            <span class="deck-name"><small>COLLECTION 02 · NEW</small><b>WOODLAND FAIRY TALE TAROT</b><em>點擊召喚</em></span>
-          </button>
-          <button class="tabletop-deck deck-redvisions" data-deck="redvisions" type="button" aria-label="召喚 Red Visions Tarot" aria-busy="true" disabled>
-            <i class="deck-aura" aria-hidden="true"></i>
-            <span class="deck-object" aria-hidden="true"></span>
-            <span class="deck-name"><small>COLLECTION 03 · BOOK BOX</small><b>RED VISIONS TAROT</b><em>點擊召喚</em></span>
-          </button>
-          <button class="tabletop-deck deck-prosepoem" data-deck="prosepoem" type="button" aria-label="召喚 Prose Poem Tarot" aria-busy="true" disabled>
-            <i class="deck-aura" aria-hidden="true"></i>
-            <span class="deck-object" aria-hidden="true"></span>
-            <span class="deck-name"><small>COLLECTION 04 · 80 / 83</small><b>PROSE POEM TAROT</b><em>點擊召喚</em></span>
-          </button>
-        </div>
+        <section id="deck-carousel" class="deck-carousel" role="region" aria-roledescription="carousel" aria-labelledby="deck-carousel-title" inert>
+          <div class="deck-carousel-meta">
+            <span id="deck-carousel-counter">01 / 04</span>
+            <b id="deck-carousel-title">THE UNVEILED TAROT</b>
+            <small>左右滑動／方向鍵選取 · 點擊牌盒召喚</small>
+          </div>
+          <button id="deck-carousel-previous" class="deck-carousel-arrow is-previous" type="button" aria-controls="deck-carousel-track" aria-label="上一副牌">←</button>
+          <div id="deck-carousel-track" class="tabletop-decks" tabindex="0" aria-label="可左右滑動的牌盒選單"></div>
+          <button id="deck-carousel-next" class="deck-carousel-arrow is-next" type="button" aria-controls="deck-carousel-track" aria-label="下一副牌">→</button>
+          <div class="deck-carousel-progress" aria-hidden="true"><i id="deck-carousel-progress"></i></div>
+          <p id="deck-carousel-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+        </section>
 
-        <nav class="deck-workbench-nav" aria-label="完整卡牌工作檯">
-          <span><i>ALL</i> CARD WORKBENCH</span>
-          <a href="./?deck=unveiled&amp;mode=browse" data-browse-deck="unveiled"><small>01</small>THE UNVEILED · 一般瀏覽</a>
-          <a href="./?deck=woodland&amp;mode=browse" data-browse-deck="woodland"><small>02</small>WOODLAND · 一般瀏覽</a>
-          <a href="./?deck=redvisions&amp;mode=browse" data-browse-deck="redvisions"><small>03</small>RED VISIONS · 一般瀏覽</a>
-          <a href="./?deck=prosepoem&amp;mode=browse" data-browse-deck="prosepoem"><small>04</small>PROSE POEM · 一般瀏覽</a>
+        <nav id="deck-workbench-nav" class="deck-workbench-nav" aria-label="目前牌組的一般瀏覽" inert>
+          <span><i id="deck-workbench-number">01</i> CURRENT DECK</span>
+          <a id="deck-workbench-link" href="./?deck=unveiled&amp;mode=browse" data-browse-deck="unveiled"><small>OPEN</small><b id="deck-workbench-title">THE UNVEILED TAROT</b><em>一般瀏覽</em></a>
         </nav>
 
         <div class="scene-orbit-controls" aria-label="2.5D 場景控制">
@@ -89,10 +76,10 @@
           <button id="scene-reset-view" type="button" aria-label="重設 2.5D 場景視角">重設視角</button>
         </div>
 
-        <div class="scene-footer"><span>四副牌 · 本機素材重建</span><span>無上傳 · 無外部 API</span></div>
+        <div class="scene-footer"><span id="archive-deck-summary">4 副牌 · 本機素材重建</span><span>無上傳 · 無外部 API</span></div>
       </section>
 
-      <section id="inspection" class="inspection" aria-hidden="true">
+      <section id="inspection" class="inspection" aria-hidden="true" inert>
         <div class="void-gradient" aria-hidden="true"></div>
         <div class="rune-ring" aria-hidden="true"><i></i><b></b></div>
         <div id="inspection-particles" class="inspection-particles" aria-hidden="true"></div>
@@ -211,6 +198,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260831-01"></script>
+    <script type="module" src="./app.js?v=20260901-01"></script>
   </body>
 </html>
