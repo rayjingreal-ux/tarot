@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07182d">
+  <meta name="description" content="PROSE POEM TAROT 散文詩塔羅 80 張牌面校正工作檯。">
+  <title>PROSE POEM TAROT｜散文詩塔羅牌面工作檯</title>
+  <link rel="stylesheet" href="./styles.css?v=20260831-prosepoem-01">
+</head>
+<body>
+  <a class="skip-link" href="#cardGrid">跳到牌面總覽</a>
+
+  <header class="hero">
+    <div class="hero__copy">
+      <p class="eyebrow">COLLECTION 04 · PROSE POEM TAROT</p>
+      <h1><span>PROSE POEM</span><em>TAROT</em></h1>
+      <p class="hero__zh">散文詩塔羅</p>
+      <p class="lede">逐張核對透視拉正、4:7 裁切、透明圓角與輸出尺寸。牌盒標示 83 張，現有照片素材為 80 張；完整保留 The Hierophant A／B 與 Ten of Swords A／B，讓每一個版本都能獨立檢視。</p>
+      <nav class="hero-links" aria-label="網站導覽">
+        <a class="primary-link" href="../">返回沉浸式塔羅</a>
+        <a href="../?deck=prosepoem&amp;mode=browse">開啟第四副牌</a>
+      </nav>
+    </div>
+
+    <button class="back-preview" id="backPreview" type="button" aria-label="放大檢視散文詩塔羅牌背">
+      <span class="back-preview__image">
+        <img src="../assets/prosepoem/card-back.webp?v=20260831-prosepoem-01" alt="散文詩塔羅牌背">
+      </span>
+      <span class="back-preview__label">CARD BACK <small>檢視牌背</small></span>
+    </button>
+  </header>
+
+  <main>
+    <section class="status-panel" aria-labelledby="statusTitle">
+      <div class="status-panel__heading">
+        <p class="section-kicker">QUALITY CONTROL</p>
+        <h2 id="statusTitle">校正狀態</h2>
+      </div>
+      <div class="stats" aria-label="牌面檢查統計">
+        <div class="stat"><strong id="totalCount">80</strong><span>清單張數</span></div>
+        <div class="stat"><strong id="sizeCount">0</strong><span>240 × 420</span></div>
+        <div class="stat"><strong id="ratioCount">0</strong><span>4:7 比例</span></div>
+        <div class="stat"><strong id="alphaCount">0</strong><span>透明圓角</span></div>
+        <div class="stat"><strong id="errorCount">0</strong><span>需處理</span></div>
+      </div>
+      <div class="status-copy">
+        <p class="status-message" id="statusMessage" role="status">正在讀取 80 張牌面清單…</p>
+        <p class="variant-status" id="variantStatus">正在核對兩組 A／B 版本。</p>
+      </div>
+    </section>
+
+    <section class="catalog" aria-labelledby="catalogTitle">
+      <div class="catalog__heading">
+        <div>
+          <p class="section-kicker">CARD INDEX</p>
+          <h2 id="catalogTitle">牌面總覽</h2>
+        </div>
+        <p class="catalog__result" id="resultCount" aria-live="polite">準備牌面中</p>
+      </div>
+
+      <nav class="filters" id="filters" aria-label="卡牌分類"></nav>
+      <section class="card-grid" id="cardGrid" aria-live="polite" aria-busy="true"></section>
+
+      <div class="empty-state" id="emptyState" hidden>
+        <strong>此分類沒有牌面</strong>
+        <span>請切換其他分類查看。</span>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="viewer" id="viewer" aria-labelledby="viewerTitle">
+    <div class="viewer__shell">
+      <div class="viewer__topbar">
+        <p><span id="viewerIndex">00</span><span id="viewerCounter">1 / 80</span></p>
+        <button class="viewer__close" id="viewerClose" type="button" aria-label="關閉單張檢視">×</button>
+      </div>
+
+      <button class="viewer__nav viewer__nav--previous" id="viewerPrevious" type="button" aria-label="上一張牌">
+        <span aria-hidden="true">←</span><small>上一張</small>
+      </button>
+
+      <figure>
+        <div class="viewer__stage">
+          <img id="viewerImage" alt="">
+        </div>
+        <figcaption>
+          <p class="viewer__suit" id="viewerSuit"></p>
+          <h2 id="viewerTitle"></h2>
+          <p class="viewer__subtitle" id="viewerSubtitle"></p>
+          <div class="viewer__checks" id="viewerChecks" aria-label="此牌面檢查結果"></div>
+          <p class="viewer__hint">方向鍵切換 · Home／End 跳到首末張 · Esc 返回總覽</p>
+        </figcaption>
+      </figure>
+
+      <button class="viewer__nav viewer__nav--next" id="viewerNext" type="button" aria-label="下一張牌">
+        <small>下一張</small><span aria-hidden="true">→</span>
+      </button>
+    </div>
+  </dialog>
+
+  <template id="cardTemplate">
+    <article class="card-item">
+      <button class="card-button" type="button">
+        <span class="card-frame"><img loading="eager" decoding="async" alt=""></span>
+        <span class="card-meta">
+          <span class="card-number"></span>
+          <span class="card-names"><strong></strong><small></small></span>
+          <span class="card-state" aria-label="檢查中">檢查中</span>
+        </span>
+      </button>
+    </article>
+  </template>
+
+  <script src="./app.js?v=20260831-prosepoem-01" defer></script>
+</body>
+</html>

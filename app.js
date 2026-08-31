@@ -25,7 +25,7 @@ const LEGACY_CARD_MANIFEST_CANDIDATES = [
   "./assets/cards-manifest.json",
   "./cards-manifest.json",
 ];
-const CARD_ASSET_VERSION = "manifest-pool-20260830-02";
+const CARD_ASSET_VERSION = "manifest-pool-20260831-01";
 
 function escapeSvgText(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -177,6 +177,7 @@ const DEFAULT_DECKS = {
     cards: "LXXX / LXXX",
     basis: "86 PHOTOS",
     hasCards: true,
+    model: "slipcase",
     openLabel: "拉出內盒",
     closeLabel: "收回內盒",
     textureRoot: "./assets/unveiled/textures/",
@@ -196,6 +197,8 @@ const DEFAULT_DECKS = {
     cards: "LXXVIII / LXXVIII",
     basis: "29 PHOTOS",
     hasCards: true,
+    model: "book",
+    packageType: "inner-box",
     openLabel: "打開磁吸書型盒",
     closeLabel: "闔上磁吸書型盒",
     cardManifest: "./assets/cards-manifest.json",
@@ -218,6 +221,8 @@ const DEFAULT_DECKS = {
     cards: "LXXVIII / LXXVIII",
     basis: "90 PHOTOS",
     hasCards: true,
+    model: "book",
+    packageType: "inner-box",
     openLabel: "打開磁吸書型盒",
     closeLabel: "闔上磁吸書型盒",
     cardManifest: "./assets/redvisions/cards-manifest.json",
@@ -230,6 +235,37 @@ const DEFAULT_DECKS = {
       "guidebook-front.png", "guidebook-back.png", "card-back.png",
     ],
     cardBack: "card-back.png",
+  },
+  prosepoem: {
+    number: "04",
+    header: "PROSE POEM TAROT",
+    kicker: "LIGHT, FLIGHT & POETIC IMAGE",
+    title: "PROSE POEM<br /><em>Tarot</em>",
+    description: "暖金磁吸書型盒、可取出的說明書與直置牌托；牌盒標示 83 張，現有素材提供 80 張校正版牌面，並保留教皇與寶劍十各一張替代圖稿。",
+    structure: "HINGED BOOK BOX + GUIDE + CARD STACK",
+    cards: "LXXX / LXXXIII",
+    availableCardCount: 80,
+    printedCardCount: 83,
+    basis: "98 PHOTOS",
+    hasCards: true,
+    model: "book",
+    packageType: "card-stack",
+    packageAspectRatio: 4 / 7,
+    packageFaceTexture: "../card-back.webp",
+    edgeColor: "#b77716",
+    paperColor: "#d39a2c",
+    openLabel: "打開暖金書型盒",
+    closeLabel: "闔上暖金書型盒",
+    cardManifest: "./assets/prosepoem/cards-manifest.json",
+    workbench: "./prosepoem-workbench/",
+    textureRoot: "./assets/prosepoem/textures/",
+    textureVersion: "20260831-01",
+    textureFiles: [
+      "outer-front.jpg", "outer-back.jpg", "outer-inside.jpg", "outer-left.jpg", "outer-right.jpg", "outer-top.jpg", "outer-bottom.jpg",
+      "inner-front.jpg", "inner-back.jpg", "inner-front-upright.jpg", "inner-back-upright.jpg", "inner-left.jpg", "inner-right.jpg", "inner-top.jpg", "inner-bottom.jpg",
+      "guidebook-front.png", "guidebook-back.png", "../card-back.webp",
+    ],
+    cardBack: "../card-back.webp",
   },
 };
 
@@ -331,7 +367,15 @@ let feedbackResetTimer = null;
 
 let activeDeckKey = "woodland";
 function isBookDeck(deckKey = activeDeckKey) {
-  return deckKey === "woodland" || deckKey === "redvisions";
+  return DECKS[deckKey]?.model === "book";
+}
+
+function isDirectCardStackDeck(deckKey = activeDeckKey) {
+  return isBookDeck(deckKey) && DECKS[deckKey]?.packageType === "card-stack";
+}
+
+function packageLabel(deckKey = activeDeckKey) {
+  return isDirectCardStackDeck(deckKey) ? "牌堆" : "內卡盒";
 }
 let activeMode = "box";
 let selectedCard = 0;
@@ -859,7 +903,7 @@ function updateArtifactCopy() {
   browseDeckTitle.textContent = deck.header;
   updateDedicatedWorkbenchLink();
   const sequenceHint = isBookDeck(activeDeckKey)
-    ? "單擊外盒開啟 · 單擊說明書取出／翻面 · 單擊內卡盒浮出 · 再單擊內卡盒抽牌"
+    ? `單擊外盒開啟 · 單擊說明書取出／翻面 · 單擊${packageLabel()}浮出 · 再單擊${packageLabel()}抽牌`
     : "單擊外盒拉出或收回內盒";
   boxSequenceHint.dataset.defaultText = sequenceHint;
   boxSequenceHint.textContent = sequenceHint;
@@ -907,7 +951,7 @@ function resetWoodlandInteraction() {
   artifactBrightnessCurrent = 1;
   cardsModeTab.disabled = true;
   cardsModeTab.title = isBookDeck(activeDeckKey)
-    ? "依序單擊說明書與內卡盒，再單擊抽牌"
+    ? `依序單擊說明書與${packageLabel()}，再單擊抽牌`
     : "正在準備完整牌組…";
   inspection.removeAttribute("aria-busy");
   inspection.classList.remove("is-inner-box-ready", "is-card-summoning", "is-card-focus", "is-card-back", "is-card-side");
@@ -919,11 +963,12 @@ function resetWoodlandInteraction() {
 function enterInspection(deckKey, initialMode = "box") {
   if (!DECKS[deckKey]) return;
   activeDeckKey = deckKey;
+  inspection.dataset.packageType = DECKS[deckKey].packageType ?? DECKS[deckKey].model ?? "artifact";
   updateArtifactCopy();
   if (isBookDeck(deckKey)) {
     applyBookDeckAppearance(deckKey);
     cardsModeTab.disabled = true;
-    cardsModeTab.title = "依序單擊說明書與內卡盒後開啟";
+    cardsModeTab.title = `依序單擊說明書與${packageLabel(deckKey)}後開啟`;
   }
   woodlandRoot.visible = isBookDeck(deckKey);
   unveiledRoot.visible = deckKey === "unveiled";
@@ -1119,7 +1164,7 @@ function setBoxOpen(value, { sound = false } = {}) {
       cardSummonProgress = 0;
       woodlandPhase = WOODLAND_PHASE.CLOSED;
       cardsModeTab.disabled = true;
-      cardsModeTab.title = "依序單擊說明書與內卡盒，再單擊抽牌";
+      cardsModeTab.title = `依序單擊說明書與${packageLabel()}，再單擊抽牌`;
       inspection.removeAttribute("aria-busy");
       inspection.classList.remove("is-inner-box-ready", "is-card-summoning", "is-card-focus", "is-card-back", "is-card-side");
       inspection.dataset.woodlandPhase = woodlandPhase;
@@ -1675,14 +1720,30 @@ function applyBookDeckAppearance(deckKey) {
     material.map = texture;
     material.needsUpdate = true;
   }
+  const deck = DECKS[deckKey];
+  const directCardStack = isDirectCardStackDeck(deckKey);
+  const packageFaceTexture = directCardStack && deck.packageFaceTexture
+    ? textures[`${deckKey}:${deck.packageFaceTexture}`]
+    : null;
+  [
+    [woodlandInnerMaterials[4], "inner-front-upright.jpg"],
+    [woodlandInnerMaterials[5], "inner-back-upright.jpg"],
+  ].forEach(([material, fallbackFile]) => {
+    material.map = packageFaceTexture ?? textures[`${deckKey}:${fallbackFile}`] ?? null;
+    material.transparent = directCardStack;
+    material.alphaTest = directCardStack ? 0.08 : 0;
+    material.needsUpdate = true;
+  });
   const isRedVisions = deckKey === "redvisions";
-  const edgeColor = isRedVisions ? 0x5b1719 : 0x335853;
-  const paperColor = isRedVisions ? 0x6e2224 : 0xa87c40;
-  greenEdge.color.setHex(edgeColor);
-  goldPaper.color.setHex(paperColor);
-  woodlandDisplayMaterialState.set(greenEdge, new THREE.Color(edgeColor));
-  woodlandDisplayMaterialState.set(goldPaper, new THREE.Color(paperColor));
-  woodlandRoot.name = DECKS[deckKey].header;
+  const fallbackEdgeColor = isRedVisions ? 0x5b1719 : 0x335853;
+  const fallbackPaperColor = isRedVisions ? 0x6e2224 : 0xa87c40;
+  const edgeColor = new THREE.Color(deck.edgeColor ?? fallbackEdgeColor);
+  const paperColor = new THREE.Color(deck.paperColor ?? fallbackPaperColor);
+  greenEdge.color.copy(edgeColor);
+  goldPaper.color.copy(paperColor);
+  woodlandDisplayMaterialState.set(greenEdge, edgeColor.clone());
+  woodlandDisplayMaterialState.set(goldPaper, paperColor.clone());
+  woodlandRoot.name = deck.header;
 }
 
 
@@ -2224,7 +2285,7 @@ function beginGuidebookExtraction() {
   inspection.dataset.woodlandPhase = woodlandPhase;
   playCardSlide(1);
   triggerMysticEffect(0.25);
-  showBoxFeedback("已選取說明書：正在取出（封面已向右旋轉 90°）");
+  showBoxFeedback("已選取說明書：正在取出");
 }
 
 function handleGuidebookClick() {
@@ -2254,6 +2315,7 @@ function handleGuidebookClick() {
 }
 
 function handleInnerBoxClick() {
+  const label = packageLabel();
   if (guidebookExtractedTarget < 0.5 || guidebookExtractedCurrent < 0.86) {
     showBoxFeedback("請先點擊說明書並等待它完全取出", "waiting");
     return;
@@ -2265,15 +2327,20 @@ function handleInnerBoxClick() {
     inspection.dataset.woodlandPhase = woodlandPhase;
     playBoxSound(true, activeDeckKey);
     triggerMysticEffect(0.36);
-    showBoxFeedback("已選取內卡盒：正在浮出");
+    showBoxFeedback(`已選取${label}：正在浮出`);
     return;
   }
   if (woodlandPhase === WOODLAND_PHASE.INNER_READY) {
-    showBoxFeedback(`已選取內卡盒：正在展開 ${CARDS.length || 78} 張牌面`);
+    const expectedCardCount = CARDS.length || DECKS[activeDeckKey]?.availableCardCount;
+    showBoxFeedback(
+      expectedCardCount
+        ? `已選取${label}：正在展開 ${expectedCardCount} 張牌面`
+        : `已選取${label}：正在展開完整牌組`,
+    );
     beginCardSummoning();
     return;
   }
-  showBoxFeedback("內卡盒正在移動，請稍候", "waiting");
+  showBoxFeedback(`${label}正在移動，請稍候`, "waiting");
 }
 
 function beginCardSummoning() {
@@ -2421,7 +2488,7 @@ function enterBoxModeDuringReturn(now) {
     return;
   }
   setDeckReturnStage("inner-box", now);
-  showBoxFeedback("牌卡已聚攏，正在收回第二層牌盒", "waiting", 0);
+  showBoxFeedback(`牌卡已聚攏，正在收回${packageLabel()}`, "waiting", 0);
 }
 
 
@@ -2437,11 +2504,11 @@ function finishDeckReturn() {
   openButton.disabled = false;
   cardsModeTab.disabled = isBookDeck(activeDeckKey);
   cardsModeTab.title = isBookDeck(activeDeckKey)
-    ? "依序單擊說明書與內卡盒，再單擊抽牌"
+    ? `依序單擊說明書與${packageLabel()}，再單擊抽牌`
     : `抽取完整 ${CARDS.length} 張牌組`;
   showBoxFeedback(
     isBookDeck(activeDeckKey)
-      ? "牌卡、第二層牌盒與說明書已歸位，磁吸書型盒已闔上"
+      ? `牌卡、${packageLabel()}與說明書已歸位，磁吸書型盒已闔上`
       : "牌卡與內抽屜已收回牌盒",
     "active",
     3200
@@ -2473,7 +2540,7 @@ function updateCardTransitions(now) {
     guidebookFlippedTarget = 0;
     guidebookExtractedTarget = 0;
     setDeckReturnStage("guidebook", now);
-    showBoxFeedback("第二層牌盒已歸位，正在放回說明書", "waiting", 0);
+    showBoxFeedback(`${packageLabel()}已歸位，正在放回說明書`, "waiting", 0);
     return;
   }
   if (deckReturnStage === "guidebook" && guidebookExtractedCurrent <= 0.045) {
@@ -2818,13 +2885,23 @@ function animate(now) {
   woodlandInnerPackage.position.y = -0.025 + innerBoxEase * 0.08;
   woodlandInnerPackage.position.z = -0.035 + innerBoxEase * 0.92;
   woodlandInnerPackage.rotation.z = 0;
-  woodlandInnerPackage.scale.setScalar(1 + innerBoxEase * 0.13);
+  const innerPackageScale = 1 + innerBoxEase * 0.13;
+  const geometryAspectRatio = INNER_BOX_WIDTH / INNER_BOX_HEIGHT;
+  const requestedAspectRatio = Number(DECKS[activeDeckKey]?.packageAspectRatio);
+  const innerPackageScaleX = Number.isFinite(requestedAspectRatio) && requestedAspectRatio > 0
+    ? requestedAspectRatio / geometryAspectRatio
+    : 1;
+  woodlandInnerPackage.scale.set(
+    innerPackageScale * innerPackageScaleX,
+    innerPackageScale,
+    innerPackageScale,
+  );
   if (woodlandPhase === WOODLAND_PHASE.INNER_FLOATING && innerBoxExtractedCurrent > 0.92) {
     woodlandPhase = WOODLAND_PHASE.INNER_READY;
     innerBoxGlowTarget = 1;
     inspection.classList.add("is-inner-box-ready");
     inspection.dataset.woodlandPhase = woodlandPhase;
-    cardsModeTab.title = "單擊浮出的內卡盒抽取一張牌";
+    cardsModeTab.title = `單擊浮出的${packageLabel()}抽取一張牌`;
   }
   updateInnerBoxEffects(dt, time, now);
 

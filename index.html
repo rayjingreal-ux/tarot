@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#050807" />
     <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
     <title>Arcana Cabinet｜塔羅藏書室</title>
-    <link rel="stylesheet" href="./styles.css?v=20260830-01" />
+    <link rel="stylesheet" href="./styles.css?v=20260831-01" />
     <script type="importmap">
       {
         "imports": {
@@ -35,7 +35,7 @@
 
         <header class="archive-header">
           <a class="sigil" href="#" aria-label="塔羅藏書室首頁"><i>✦</i><span>ARCANA<br />CABINET</span></a>
-        <div class="header-meta"><span>PRIVATE COLLECTION</span><b>03 DECKS · LOCAL ARCHIVE</b></div>
+        <div class="header-meta"><span>PRIVATE COLLECTION</span><b>04 DECKS · LOCAL ARCHIVE</b></div>
         </header>
 
         <div class="scene-copy entrance-copy">
@@ -69,6 +69,11 @@
             <span class="deck-object" aria-hidden="true"></span>
             <span class="deck-name"><small>COLLECTION 03 · BOOK BOX</small><b>RED VISIONS TAROT</b><em>點擊召喚</em></span>
           </button>
+          <button class="tabletop-deck deck-prosepoem" data-deck="prosepoem" type="button" aria-label="召喚 Prose Poem Tarot" aria-busy="true" disabled>
+            <i class="deck-aura" aria-hidden="true"></i>
+            <span class="deck-object" aria-hidden="true"></span>
+            <span class="deck-name"><small>COLLECTION 04 · 80 / 83</small><b>PROSE POEM TAROT</b><em>點擊召喚</em></span>
+          </button>
         </div>
 
         <nav class="deck-workbench-nav" aria-label="完整卡牌工作檯">
@@ -76,6 +81,7 @@
           <a href="./?deck=unveiled&amp;mode=browse" data-browse-deck="unveiled"><small>01</small>THE UNVEILED · 一般瀏覽</a>
           <a href="./?deck=woodland&amp;mode=browse" data-browse-deck="woodland"><small>02</small>WOODLAND · 一般瀏覽</a>
           <a href="./?deck=redvisions&amp;mode=browse" data-browse-deck="redvisions"><small>03</small>RED VISIONS · 一般瀏覽</a>
+          <a href="./?deck=prosepoem&amp;mode=browse" data-browse-deck="prosepoem"><small>04</small>PROSE POEM · 一般瀏覽</a>
         </nav>
 
         <div class="scene-orbit-controls" aria-label="2.5D 場景控制">
@@ -83,7 +89,7 @@
           <button id="scene-reset-view" type="button" aria-label="重設 2.5D 場景視角">重設視角</button>
         </div>
 
-        <div class="scene-footer"><span>三副牌 · 本機素材重建</span><span>無上傳 · 無外部 API</span></div>
+        <div class="scene-footer"><span>四副牌 · 本機素材重建</span><span>無上傳 · 無外部 API</span></div>
       </section>
 
       <section id="inspection" class="inspection" aria-hidden="true">
@@ -205,6 +211,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260830-02"></script>
+    <script type="module" src="./app.js?v=20260831-01"></script>
   </body>
 </html>
