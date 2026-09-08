@@ -1,0 +1,1692 @@
+:root {
+  --draw-glass: rgba(5, 13, 11, 0.76);
+  --draw-glass-strong: rgba(4, 10, 8, 0.9);
+  --draw-line: rgba(222, 190, 125, 0.24);
+  --draw-gold: #d7b66f;
+  --draw-gold-bright: #f1daa4;
+  --draw-green: #78a698;
+  --draw-shadow: rgba(0, 0, 0, 0.68);
+}
+
+.ritual-step-button {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 11px;
+  padding: 10px 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(211, 170, 98, 0.42);
+  background:
+    linear-gradient(105deg, rgba(211, 170, 98, 0.18), rgba(73, 119, 105, 0.1)),
+    rgba(4, 9, 7, 0.72);
+  color: #ead7ae;
+  cursor: pointer;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  transition: border-color 0.25s ease, background 0.25s ease, color 0.25s ease, transform 0.25s ease;
+}
+
+.ritual-step-button[hidden] {
+  display: none;
+}
+
+.ritual-step-button i {
+  color: var(--gold);
+  font-style: normal;
+}
+
+.ritual-step-button:hover,
+.ritual-step-button:focus-visible {
+  border-color: var(--gold);
+  background: rgba(211, 170, 98, 0.2);
+  color: #fff1cf;
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.reading-result-strip {
+  margin: 11px 0 2px;
+  padding: 10px 11px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 12px;
+  border: 1px solid rgba(211, 170, 98, 0.2);
+  background: linear-gradient(112deg, rgba(211, 170, 98, 0.075), rgba(76, 119, 113, 0.07));
+}
+
+.reading-result-strip[hidden] {
+  display: none;
+}
+
+#reading-question {
+  grid-column: 1 / -1;
+  margin: 0;
+  overflow: hidden;
+  color: #d8cebc;
+  font: 400 11px/1.45 var(--serif);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#reading-method,
+#reading-result-status {
+  color: #858077;
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+#reading-result-status {
+  color: var(--gold);
+  text-align: right;
+}
+
+.inspection[data-reading-active="true"] #previous-card,
+.inspection[data-reading-active="true"] #next-card,
+.inspection[data-reading-active="true"] #card-catalog-toggle,
+.inspection[data-reading-active="true"] #card-catalog-panel {
+  display: none !important;
+}
+
+#draw-ritual {
+  --draw-card-width: clamp(76px, 8vw, 100px);
+  width: min(980px, calc(100vw - 56px));
+  height: min(740px, calc(100dvh - 48px));
+  max-width: none;
+  max-height: none;
+  margin: auto;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+#draw-ritual:not([open]) {
+  display: none;
+}
+
+#draw-ritual[open] {
+  display: grid;
+  animation: drawRitualEnter 0.52s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+#draw-ritual::backdrop {
+  background:
+    radial-gradient(circle at 51% 47%, rgba(25, 60, 49, 0.14), transparent 42%),
+    rgba(1, 4, 3, 0.46);
+  -webkit-backdrop-filter: blur(3px) saturate(0.82);
+  backdrop-filter: blur(3px) saturate(0.82);
+  animation: drawBackdropEnter 0.45s ease both;
+}
+
+.draw-ritual-shell {
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid rgba(224, 193, 127, 0.38);
+  border-radius: 3px;
+  background:
+    radial-gradient(circle at 82% 9%, rgba(119, 166, 152, 0.13), transparent 31%),
+    radial-gradient(circle at 15% 93%, rgba(211, 170, 98, 0.11), transparent 32%),
+    linear-gradient(145deg, rgba(7, 18, 15, 0.79), rgba(3, 9, 7, 0.7));
+  box-shadow: 0 32px 110px var(--draw-shadow), inset 0 0 56px rgba(204, 176, 112, 0.035);
+  -webkit-backdrop-filter: blur(17px) saturate(1.08);
+  backdrop-filter: blur(17px) saturate(1.08);
+}
+
+.draw-ritual-shell::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.55;
+  background:
+    radial-gradient(circle at 8% 20%, rgba(241, 218, 164, 0.68) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 92% 28%, rgba(120, 166, 152, 0.58) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 71% 84%, rgba(241, 218, 164, 0.46) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 28% 72%, rgba(120, 166, 152, 0.42) 0 1px, transparent 1.8px);
+}
+
+.draw-ritual-shell::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 0;
+  width: 33.333%;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--draw-gold-bright), transparent);
+  box-shadow: 0 0 18px rgba(215, 182, 111, 0.75);
+  transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+#draw-ritual[data-phase="shuffling"] .draw-ritual-shell::after {
+  transform: translateX(100%);
+}
+
+#draw-ritual[data-phase="selecting"] .draw-ritual-shell::after {
+  transform: translateX(200%);
+}
+
+.draw-ritual-header {
+  position: relative;
+  z-index: 2;
+  min-height: 157px;
+  padding: 24px 32px 19px;
+  border-bottom: 1px solid rgba(230, 215, 185, 0.13);
+  background: linear-gradient(180deg, rgba(2, 7, 5, 0.7), rgba(4, 11, 9, 0.16));
+  text-align: center;
+}
+
+.draw-ritual-close {
+  position: absolute;
+  top: 22px;
+  left: 26px;
+  min-width: 116px;
+  min-height: 44px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid rgba(222, 190, 125, 0.28);
+  border-radius: 999px;
+  background: rgba(4, 10, 8, 0.62);
+  color: #c9bda7;
+  cursor: pointer;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  transition: border-color 0.25s ease, color 0.25s ease, background 0.25s ease;
+}
+
+.draw-ritual-close i {
+  color: var(--draw-gold);
+  font: normal 15px var(--serif);
+}
+
+.draw-ritual-close:hover,
+.draw-ritual-close:focus-visible {
+  border-color: var(--draw-gold);
+  background: rgba(211, 170, 98, 0.12);
+  color: #fff0cd;
+  outline: none;
+}
+
+#draw-ritual-deck {
+  position: absolute;
+  top: 27px;
+  right: 30px;
+  max-width: 38%;
+  margin: 0;
+  overflow: hidden;
+  color: #a49c8e;
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.draw-ritual-heading > span {
+  display: block;
+  color: var(--draw-gold);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+}
+
+.draw-ritual-heading h2 {
+  margin: 9px 0 6px;
+  color: #f0e5d1;
+  font: 400 clamp(30px, 4vw, 47px)/1 var(--serif);
+  letter-spacing: -0.025em;
+  text-shadow: 0 7px 25px rgba(0, 0, 0, 0.65);
+}
+
+.draw-ritual-heading p {
+  margin: 0;
+  color: #9e988e;
+  font: 400 11px/1.5 var(--serif);
+  letter-spacing: 0.025em;
+}
+
+.draw-ritual-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.draw-panel {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: clamp(22px, 3vh, 32px) clamp(28px, 4vw, 46px) clamp(24px, 3.5vh, 36px);
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(215, 182, 111, 0.36) transparent;
+}
+
+#draw-ritual [hidden],
+.draw-panel[hidden],
+.draw-ritual-feedback [hidden] {
+  display: none !important;
+}
+
+.draw-panel button,
+.draw-panel textarea,
+.draw-ritual-close,
+#draw-retry {
+  touch-action: manipulation;
+}
+
+.draw-panel button:focus-visible,
+.draw-panel textarea:focus-visible,
+.draw-panel input:focus-visible + .draw-method-sigil,
+#draw-retry:focus-visible {
+  outline: 2px solid var(--draw-gold);
+  outline-offset: 3px;
+}
+
+.draw-setup {
+  display: grid;
+  align-content: start;
+}
+
+.draw-setup-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.22fr) minmax(280px, 0.78fr);
+  gap: clamp(24px, 4vw, 48px);
+  align-items: start;
+}
+
+.draw-question-block label span,
+.draw-methods legend,
+.draw-selection-head > div > span {
+  display: block;
+  color: var(--draw-gold);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.19em;
+}
+
+.draw-question-block label strong {
+  display: block;
+  margin-top: 7px;
+  color: #ebe0cb;
+  font: 400 24px/1.15 var(--serif);
+}
+
+#draw-question {
+  width: 100%;
+  min-height: 176px;
+  max-height: 250px;
+  margin-top: 17px;
+  padding: 17px 18px;
+  resize: vertical;
+  border: 1px solid rgba(224, 207, 171, 0.2);
+  border-radius: 2px;
+  background:
+    linear-gradient(135deg, rgba(239, 220, 182, 0.04), transparent 58%),
+    rgba(1, 7, 5, 0.5);
+  color: #f0e6d5;
+  caret-color: var(--draw-gold);
+  font: 400 16px/1.65 var(--serif);
+  transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+}
+
+#draw-question::placeholder {
+  color: #686861;
+}
+
+#draw-question:hover,
+#draw-question:focus {
+  border-color: rgba(215, 182, 111, 0.55);
+  background-color: rgba(4, 12, 9, 0.72);
+  box-shadow: inset 0 0 24px rgba(122, 167, 153, 0.045), 0 0 0 1px rgba(215, 182, 111, 0.05);
+}
+
+.draw-question-meta {
+  margin-top: 10px;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.draw-question-meta p {
+  max-width: 430px;
+  margin: 0;
+  color: #7f7c74;
+  font: 400 9px/1.55 var(--serif);
+}
+
+#draw-question-count {
+  flex: 0 0 auto;
+  color: #8f8a80;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.draw-methods {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.draw-methods legend {
+  margin-bottom: 11px;
+}
+
+.draw-method-option {
+  position: relative;
+  min-height: 72px;
+  margin-top: 8px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(224, 207, 171, 0.14);
+  background: rgba(4, 10, 8, 0.46);
+  cursor: pointer;
+  transition: border-color 0.25s ease, background 0.25s ease, transform 0.25s ease;
+}
+
+.draw-method-option:hover {
+  border-color: rgba(215, 182, 111, 0.42);
+  background: rgba(211, 170, 98, 0.065);
+  transform: translateY(-1px);
+}
+
+.draw-method-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.draw-method-sigil {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(215, 182, 111, 0.25);
+  border-radius: 50%;
+  color: #91866f;
+  font: 15px var(--serif);
+  transition: border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.draw-method-option input:checked + .draw-method-sigil {
+  border-color: var(--draw-gold);
+  color: var(--draw-gold-bright);
+  box-shadow: 0 0 20px rgba(215, 182, 111, 0.27), inset 0 0 10px rgba(215, 182, 111, 0.09);
+}
+
+.draw-method-option:has(input:checked) {
+  border-color: rgba(215, 182, 111, 0.5);
+  background: linear-gradient(110deg, rgba(211, 170, 98, 0.11), rgba(78, 126, 111, 0.07));
+}
+
+.draw-method-option strong,
+.draw-method-option small {
+  display: block;
+}
+
+.draw-method-option strong {
+  color: #dfd4c0;
+  font: 400 15px var(--serif);
+}
+
+.draw-method-option small {
+  margin-top: 5px;
+  color: #7f7b73;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.draw-single-card-note {
+  margin-top: 14px;
+  padding: 12px 13px;
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr);
+  gap: 11px;
+  border-left: 1px solid rgba(120, 166, 152, 0.5);
+  background: linear-gradient(90deg, rgba(85, 139, 123, 0.09), transparent);
+}
+
+.draw-single-card-note > i {
+  width: 6px;
+  height: 6px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--draw-green);
+  box-shadow: 0 0 13px rgba(120, 166, 152, 0.75);
+}
+
+.draw-single-card-note p,
+.draw-single-card-note strong,
+.draw-single-card-note span {
+  margin: 0;
+  display: block;
+}
+
+.draw-single-card-note strong {
+  color: #bcb7aa;
+  font: 400 10px var(--serif);
+}
+
+.draw-single-card-note span {
+  margin-top: 4px;
+  color: #77766f;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.draw-panel-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
+  gap: 9px;
+  align-items: stretch;
+}
+
+.draw-panel-actions.is-end {
+  width: min(360px, 100%);
+  margin-top: clamp(19px, 3vh, 28px);
+  margin-left: auto;
+  grid-template-columns: 1fr;
+}
+
+.draw-panel-actions.is-centered {
+  width: min(310px, 100%);
+  margin: 20px auto 0;
+  grid-template-columns: 1fr;
+}
+
+.draw-primary-action,
+.draw-secondary-action,
+#draw-retry {
+  min-height: 48px;
+  padding: 10px 15px;
+  border: 1px solid rgba(215, 182, 111, 0.36);
+  cursor: pointer;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  transition: border-color 0.25s ease, background 0.25s ease, color 0.25s ease, transform 0.25s ease, opacity 0.25s ease;
+}
+
+.draw-primary-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-color: rgba(232, 204, 145, 0.56);
+  background: linear-gradient(105deg, #d5b46e, #b78d48);
+  color: #11150f;
+  font-weight: 700;
+}
+
+.draw-primary-action i {
+  font: normal 17px var(--serif);
+}
+
+.draw-secondary-action,
+#draw-retry {
+  background: rgba(4, 11, 8, 0.52);
+  color: #bdb5a7;
+}
+
+.draw-primary-action:not(:disabled):hover,
+.draw-primary-action:not(:disabled):focus-visible,
+.draw-secondary-action:hover,
+.draw-secondary-action:focus-visible,
+#draw-retry:hover,
+#draw-retry:focus-visible {
+  border-color: var(--draw-gold-bright);
+  transform: translateY(-1px);
+}
+
+.draw-primary-action:not(:disabled):hover,
+.draw-primary-action:not(:disabled):focus-visible {
+  background: linear-gradient(105deg, #efd99f, #cca45b);
+}
+
+.draw-secondary-action:hover,
+.draw-secondary-action:focus-visible,
+#draw-retry:hover,
+#draw-retry:focus-visible {
+  background: rgba(211, 170, 98, 0.12);
+  color: #f0dfbd;
+}
+
+.draw-primary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.36;
+  filter: saturate(0.45);
+}
+
+.draw-shuffling {
+  display: grid;
+  align-items: center;
+}
+
+.draw-shuffling-layout {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(360px, 1.25fr) minmax(260px, 0.75fr);
+  gap: clamp(26px, 5vw, 58px);
+  align-items: center;
+}
+
+.draw-shuffle-stage {
+  position: relative;
+  isolation: isolate;
+  height: min(390px, 48vh);
+  min-height: 300px;
+  overflow: hidden;
+  border: 1px solid rgba(224, 207, 171, 0.12);
+  background:
+    radial-gradient(circle at 50% 54%, rgba(215, 182, 111, 0.12), transparent 25%),
+    radial-gradient(circle at 50% 52%, rgba(55, 108, 91, 0.12), transparent 58%),
+    rgba(2, 8, 6, 0.28);
+}
+
+.draw-shuffle-stage::before,
+.draw-shuffle-stage::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 52%;
+  width: 240px;
+  aspect-ratio: 1;
+  border: 1px solid rgba(215, 182, 111, 0.14);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.draw-shuffle-stage::after {
+  width: 170px;
+  border-color: rgba(120, 166, 152, 0.14);
+  border-style: dashed;
+}
+
+.draw-scatter-deck,
+.draw-starlight-field {
+  position: absolute;
+  inset: 0;
+}
+
+.draw-scatter-card {
+  --draw-x: 0px;
+  --draw-y: 0px;
+  --draw-r: 0deg;
+  --draw-delay: 0s;
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 52%;
+  width: 68px;
+  aspect-ratio: 4 / 7;
+  border: 1px solid rgba(245, 226, 187, 0.5);
+  border-radius: 3px;
+  background-color: #101b19;
+  background-image:
+    linear-gradient(135deg, rgba(255, 245, 219, 0.08), transparent 38%, rgba(62, 108, 96, 0.12)),
+    var(--draw-card-back, linear-gradient(145deg, #233a34, #0a1311 56%, #7f663b));
+  background-position: center;
+  background-size: cover;
+  box-shadow: 0 11px 20px rgba(0, 0, 0, 0.54), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  transform: translate(calc(-50% + var(--draw-x)), calc(-50% + var(--draw-y))) rotate(var(--draw-r));
+  transform-origin: center;
+  will-change: transform, opacity, filter;
+}
+
+.draw-scatter-card:nth-child(1) { --draw-x: -146px; --draw-y: -66px; --draw-r: -24deg; --draw-delay: -0.15s; }
+.draw-scatter-card:nth-child(2) { --draw-x: -78px; --draw-y: -98px; --draw-r: 14deg; --draw-delay: -0.5s; }
+.draw-scatter-card:nth-child(3) { --draw-x: -9px; --draw-y: -82px; --draw-r: -8deg; --draw-delay: -0.28s; }
+.draw-scatter-card:nth-child(4) { --draw-x: 78px; --draw-y: -101px; --draw-r: 21deg; --draw-delay: -0.7s; }
+.draw-scatter-card:nth-child(5) { --draw-x: 143px; --draw-y: -43px; --draw-r: 31deg; --draw-delay: -0.38s; }
+.draw-scatter-card:nth-child(6) { --draw-x: -152px; --draw-y: 48px; --draw-r: -39deg; --draw-delay: -0.62s; }
+.draw-scatter-card:nth-child(7) { --draw-x: -86px; --draw-y: 71px; --draw-r: 18deg; --draw-delay: -0.1s; }
+.draw-scatter-card:nth-child(8) { --draw-x: -19px; --draw-y: 35px; --draw-r: -18deg; --draw-delay: -0.8s; }
+.draw-scatter-card:nth-child(9) { --draw-x: 52px; --draw-y: 67px; --draw-r: 12deg; --draw-delay: -0.46s; }
+.draw-scatter-card:nth-child(10) { --draw-x: 132px; --draw-y: 52px; --draw-r: -22deg; --draw-delay: -0.2s; }
+.draw-scatter-card:nth-child(11) { --draw-x: -48px; --draw-y: -12px; --draw-r: 28deg; --draw-delay: -0.58s; }
+.draw-scatter-card:nth-child(12) { --draw-x: 43px; --draw-y: -21px; --draw-r: -31deg; --draw-delay: -0.32s; }
+
+.is-holding .draw-scatter-card {
+  animation: drawScatterGather 1.12s cubic-bezier(0.45, 0, 0.2, 1) infinite alternate;
+  animation-delay: var(--draw-delay);
+}
+
+.draw-shuffle-orbit {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 52%;
+  width: 105px;
+  aspect-ratio: 1;
+  border: 1px solid rgba(241, 218, 164, 0.48);
+  border-left-color: transparent;
+  border-radius: 50%;
+  opacity: 0.72;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 24px rgba(215, 182, 111, 0.15), inset 0 0 22px rgba(120, 166, 152, 0.12);
+}
+
+#draw-ritual[data-phase="shuffling"] .draw-shuffle-orbit,
+.is-holding .draw-shuffle-orbit {
+  animation: drawOrbit 4.8s linear infinite;
+}
+
+.is-holding .draw-shuffle-orbit {
+  animation-duration: 1.35s;
+  border-color: rgba(241, 218, 164, 0.86);
+  border-left-color: transparent;
+  box-shadow: 0 0 42px rgba(215, 182, 111, 0.34), inset 0 0 28px rgba(120, 166, 152, 0.2);
+}
+
+.draw-starlight-field {
+  z-index: 4;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.45s ease;
+}
+
+.draw-starlight-field i {
+  --star-x: 50%;
+  --star-y: 50%;
+  --star-size: 3px;
+  position: absolute;
+  left: var(--star-x);
+  top: var(--star-y);
+  width: var(--star-size);
+  height: var(--star-size);
+  border-radius: 50%;
+  background: #fff0bd;
+  box-shadow: 0 0 15px rgba(241, 218, 164, 0.9);
+  animation: drawStarPulse 1.8s ease-in-out infinite alternate;
+}
+
+.draw-starlight-field i:nth-child(1) { --star-x: 14%; --star-y: 23%; --star-size: 2px; animation-delay: -0.5s; }
+.draw-starlight-field i:nth-child(2) { --star-x: 32%; --star-y: 12%; --star-size: 4px; animation-delay: -1.2s; }
+.draw-starlight-field i:nth-child(3) { --star-x: 72%; --star-y: 17%; --star-size: 2px; animation-delay: -0.8s; }
+.draw-starlight-field i:nth-child(4) { --star-x: 88%; --star-y: 40%; --star-size: 3px; animation-delay: -0.15s; }
+.draw-starlight-field i:nth-child(5) { --star-x: 78%; --star-y: 78%; --star-size: 4px; animation-delay: -1.45s; }
+.draw-starlight-field i:nth-child(6) { --star-x: 54%; --star-y: 89%; --star-size: 2px; animation-delay: -0.72s; }
+.draw-starlight-field i:nth-child(7) { --star-x: 21%; --star-y: 74%; --star-size: 3px; animation-delay: -1.05s; }
+.draw-starlight-field i:nth-child(8) { --star-x: 8%; --star-y: 50%; --star-size: 2px; animation-delay: -0.34s; }
+
+.is-starlight .draw-starlight-field {
+  opacity: 1;
+}
+
+.is-starlight .draw-shuffle-stage {
+  background:
+    radial-gradient(circle at 50% 52%, rgba(228, 209, 152, 0.22), transparent 10%),
+    radial-gradient(circle at 50% 52%, rgba(69, 125, 111, 0.26), transparent 37%),
+    linear-gradient(180deg, rgba(5, 15, 20, 0.62), rgba(3, 8, 10, 0.34));
+}
+
+.is-starlight .draw-scatter-card {
+  opacity: 0.48;
+  filter: saturate(0.72) brightness(0.75);
+  animation: drawStarlightDrift 3.2s ease-in-out infinite alternate;
+  animation-delay: var(--draw-delay);
+}
+
+.draw-shuffle-controls {
+  min-width: 0;
+}
+
+.draw-hold {
+  width: 100%;
+  min-height: 112px;
+  padding: 17px 19px;
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  border: 1px solid rgba(215, 182, 111, 0.42);
+  background:
+    radial-gradient(circle at 25px 50%, rgba(215, 182, 111, 0.14), transparent 42%),
+    rgba(4, 11, 8, 0.58);
+  color: #dfd4c0;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: border-color 0.25s ease, background 0.25s ease, transform 0.25s ease;
+}
+
+.draw-hold > i {
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(215, 182, 111, 0.42);
+  border-radius: 50%;
+  color: var(--draw-gold-bright);
+  font: normal 19px var(--serif);
+  box-shadow: inset 0 0 18px rgba(215, 182, 111, 0.08);
+}
+
+.draw-hold strong,
+.draw-hold small {
+  display: block;
+}
+
+.draw-hold strong {
+  font: 400 18px var(--serif);
+}
+
+.draw-hold small {
+  margin-top: 5px;
+  color: #817d75;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.draw-hold:hover,
+.draw-hold:focus-visible,
+.is-holding .draw-hold {
+  border-color: var(--draw-gold);
+  background: rgba(211, 170, 98, 0.11);
+  outline: none;
+}
+
+.is-holding .draw-hold {
+  transform: scale(0.985);
+}
+
+.is-holding .draw-hold > i {
+  animation: drawHoldPulse 0.72s ease-in-out infinite alternate;
+}
+
+.draw-progress-wrap {
+  margin: 16px 0 18px;
+  display: grid;
+  gap: 8px;
+}
+
+#draw-progress {
+  width: 100%;
+  height: 5px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(233, 225, 209, 0.09);
+  color: var(--draw-gold);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+#draw-progress::-webkit-progress-bar {
+  border-radius: inherit;
+  background: rgba(233, 225, 209, 0.09);
+}
+
+#draw-progress::-webkit-progress-value {
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--draw-green), var(--draw-gold-bright));
+  box-shadow: 0 0 14px rgba(215, 182, 111, 0.62);
+  transition: width 0.16s linear;
+}
+
+#draw-progress::-moz-progress-bar {
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--draw-green), var(--draw-gold-bright));
+  box-shadow: 0 0 14px rgba(215, 182, 111, 0.62);
+}
+
+#draw-progress-label {
+  color: #918b80;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-align: right;
+}
+
+.draw-selecting {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-items: stretch;
+}
+
+.draw-selection-head {
+  min-height: 132px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  text-align: right;
+}
+
+.draw-selection-head h3 {
+  margin: 7px 0 8px;
+  color: #e7dcc8;
+  font: 400 25px/1.05 var(--serif);
+}
+
+#draw-selection-count {
+  margin: 0;
+  color: #858078;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.draw-slot {
+  position: relative;
+  isolation: isolate;
+  width: 66px;
+  aspect-ratio: 4 / 7;
+  flex: 0 0 auto;
+  overflow: visible;
+  border: 1px dashed rgba(215, 182, 111, 0.4);
+  border-radius: 3px;
+  background: rgba(3, 9, 7, 0.38);
+  box-shadow: inset 0 0 18px rgba(215, 182, 111, 0.055);
+}
+
+.draw-slot::before {
+  content: "✦";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(215, 182, 111, 0.27);
+  font: 18px var(--serif);
+}
+
+.draw-slot::after {
+  content: "";
+  position: absolute;
+  z-index: 4;
+  inset: -32px;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 14% 33%, #f5d98f 0 1px, transparent 2px),
+    radial-gradient(circle at 82% 22%, #a1d3c2 0 1.5px, transparent 2.5px),
+    radial-gradient(circle at 88% 72%, #ffe9b0 0 1px, transparent 2px),
+    radial-gradient(circle at 26% 84%, #8fc0b2 0 1px, transparent 2px),
+    radial-gradient(circle at 51% 5%, #fff0c4 0 1px, transparent 2px);
+  filter: drop-shadow(0 0 5px rgba(215, 182, 111, 0.85));
+}
+
+.draw-slot.is-receiving::after,
+.draw-slot:not(:empty)::after {
+  animation: drawSelectedParticles 1.55s ease-out both;
+}
+
+.draw-slot.is-filled,
+.draw-slot.has-card {
+  border-style: solid;
+  border-color: rgba(241, 218, 164, 0.72);
+  background-color: #0b1713;
+  background-image:
+    linear-gradient(135deg, rgba(255, 245, 219, 0.08), transparent 38%, rgba(62, 108, 96, 0.12)),
+    var(--draw-card-back, linear-gradient(145deg, #233a34, #0a1311 56%, #7f663b));
+  background-position: center;
+  background-size: cover;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6), 0 0 26px rgba(215, 182, 111, 0.24);
+  animation: drawSlotArrival 0.72s cubic-bezier(0.16, 0.85, 0.24, 1.12) both;
+}
+
+#draw-slot > * {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: block;
+  border: 1px solid rgba(241, 218, 164, 0.72);
+  border-radius: inherit;
+  background-color: #0b1713;
+  background-image:
+    linear-gradient(135deg, rgba(255, 245, 219, 0.08), transparent 38%, rgba(62, 108, 96, 0.12)),
+    var(--draw-card-back, linear-gradient(145deg, #233a34, #0a1311 56%, #7f663b));
+  background-position: center;
+  background-size: cover;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6), 0 0 26px rgba(215, 182, 111, 0.24);
+  animation: drawSlotArrival 0.72s cubic-bezier(0.16, 0.85, 0.24, 1.12) both;
+}
+
+.draw-card-browser {
+  min-width: 0;
+  min-height: 190px;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) 46px;
+  gap: 12px;
+  align-items: center;
+}
+
+.draw-card-track {
+  min-width: 0;
+  min-height: 182px;
+  padding: 14px max(8px, calc((100% - var(--draw-card-width)) / 12));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scroll-padding-inline: 14px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(215, 182, 111, 0.32) transparent;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+
+.draw-card-track::-webkit-scrollbar {
+  height: 4px;
+}
+
+.draw-card-track::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: rgba(215, 182, 111, 0.34);
+}
+
+.draw-choice {
+  position: relative;
+  isolation: isolate;
+  flex: 0 0 var(--draw-card-width);
+  min-width: 64px;
+  min-height: 133px;
+  aspect-ratio: 4 / 7;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(240, 222, 184, 0.38);
+  border-radius: 3px;
+  background-color: #0c1815;
+  background-image:
+    linear-gradient(135deg, rgba(255, 245, 219, 0.08), transparent 38%, rgba(62, 108, 96, 0.12)),
+    var(--draw-card-back, linear-gradient(145deg, #233a34, #0a1311 56%, #7f663b));
+  background-position: center;
+  background-size: cover;
+  box-shadow: 0 12px 21px rgba(0, 0, 0, 0.48), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  scroll-snap-align: center;
+  transform: translateY(0);
+  transition: border-color 0.24s ease, box-shadow 0.24s ease, filter 0.24s ease, transform 0.24s ease, opacity 0.24s ease;
+}
+
+.draw-choice::before {
+  content: "";
+  position: absolute;
+  inset: -35%;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 241, 203, 0.32) 49%, transparent 62%);
+  transform: translateX(-56%);
+  transition: opacity 0.24s ease, transform 0.55s ease;
+}
+
+.draw-choice > span {
+  position: absolute;
+  z-index: 2;
+  left: 7px;
+  bottom: 7px;
+  min-width: 25px;
+  min-height: 19px;
+  padding: 4px 5px 3px;
+  border: 1px solid rgba(241, 218, 164, 0.24);
+  background: rgba(2, 8, 6, 0.7);
+  color: #d9c797;
+  font-size: 7px;
+  letter-spacing: 0.11em;
+  text-align: center;
+  pointer-events: none;
+}
+
+.draw-choice:hover,
+.draw-choice:focus-visible {
+  z-index: 2;
+  border-color: var(--draw-gold-bright);
+  box-shadow: 0 18px 31px rgba(0, 0, 0, 0.58), 0 0 25px rgba(215, 182, 111, 0.22);
+  outline: none;
+  transform: translateY(-8px) scale(1.025);
+}
+
+.draw-choice:hover::before,
+.draw-choice:focus-visible::before {
+  opacity: 1;
+  transform: translateX(55%);
+}
+
+.draw-choice.is-picked {
+  pointer-events: none;
+  opacity: 0.28;
+  border-color: var(--draw-gold);
+  filter: brightness(1.2) saturate(0.65);
+  animation: drawChoiceFlight 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.draw-choice.is-picked::after {
+  content: "✦";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #ffe8ad;
+  background: radial-gradient(circle, rgba(215, 182, 111, 0.24), transparent 52%);
+  font: 20px var(--serif);
+  text-shadow: 0 0 15px #e5be68;
+  animation: drawPickedSpark 0.75s ease-out both;
+}
+
+.draw-track-arrow {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(215, 182, 111, 0.34);
+  border-radius: 50%;
+  background: rgba(3, 9, 7, 0.58);
+  color: var(--draw-gold-bright);
+  cursor: pointer;
+  font: 18px var(--serif);
+  transition: border-color 0.25s ease, background 0.25s ease, transform 0.25s ease, opacity 0.25s ease;
+}
+
+.draw-track-arrow:not(:disabled):hover,
+.draw-track-arrow:not(:disabled):focus-visible {
+  border-color: var(--draw-gold);
+  background: rgba(211, 170, 98, 0.12);
+  outline: none;
+  transform: scale(1.06);
+}
+
+.draw-track-arrow:disabled {
+  cursor: default;
+  opacity: 0.25;
+}
+
+.draw-ritual-feedback {
+  position: relative;
+  z-index: 4;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--draw-glass-strong);
+}
+
+.draw-ritual-feedback:has(#draw-error:not([hidden])) {
+  min-height: 54px;
+  padding: 8px 16px;
+  border-top: 1px solid rgba(203, 123, 98, 0.3);
+}
+
+#draw-error {
+  margin: 0;
+  color: #e2b29e;
+  font: 400 10px/1.45 var(--serif);
+}
+
+#draw-retry {
+  min-height: 36px;
+  padding: 7px 13px;
+  border-color: rgba(218, 145, 117, 0.45);
+}
+
+@keyframes drawRitualEnter {
+  from { opacity: 0; transform: translateY(18px) scale(0.975); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes drawBackdropEnter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes drawScatterGather {
+  0% {
+    transform: translate(calc(-50% + var(--draw-x)), calc(-50% + var(--draw-y))) rotate(var(--draw-r));
+    filter: brightness(0.82);
+  }
+  72%, 100% {
+    transform: translate(-50%, -50%) rotate(calc(var(--draw-r) + 165deg)) scale(0.94);
+    filter: brightness(1.13);
+  }
+}
+
+@keyframes drawOrbit {
+  from { transform: translate(-50%, -50%) rotate(0); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes drawStarlightDrift {
+  from {
+    transform: translate(calc(-50% + var(--draw-x)), calc(-50% + var(--draw-y))) rotate(var(--draw-r));
+  }
+  to {
+    transform: translate(calc(-50% + var(--draw-x)), calc(-58% + var(--draw-y))) rotate(calc(var(--draw-r) + 5deg));
+  }
+}
+
+@keyframes drawStarPulse {
+  from { opacity: 0.25; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1.45); }
+}
+
+@keyframes drawHoldPulse {
+  from { transform: scale(0.92); box-shadow: 0 0 9px rgba(215, 182, 111, 0.2); }
+  to { transform: scale(1.06); box-shadow: 0 0 30px rgba(215, 182, 111, 0.55); }
+}
+
+@keyframes drawChoiceFlight {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  55% { opacity: 0.9; transform: translateY(-36px) scale(0.88); }
+  100% { opacity: 0.28; transform: translateY(-54px) scale(0.72); }
+}
+
+@keyframes drawPickedSpark {
+  0% { opacity: 0; transform: scale(0.45) rotate(-28deg); }
+  45% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.8) rotate(20deg); }
+}
+
+@keyframes drawSlotArrival {
+  from { opacity: 0; transform: translateY(38px) scale(0.72) rotate(5deg); filter: brightness(1.8); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+@keyframes drawSelectedParticles {
+  0% { opacity: 0; transform: scale(0.5) rotate(-16deg); }
+  35% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.35) rotate(22deg); }
+}
+
+@media (max-width: 680px) {
+  #draw-ritual {
+    --draw-card-width: 76px;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    margin: 0;
+  }
+
+  #draw-ritual::backdrop {
+    background: rgba(1, 4, 3, 0.42);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
+  .draw-ritual-shell {
+    border: 0;
+    border-radius: 0;
+    background:
+      radial-gradient(circle at 85% 10%, rgba(119, 166, 152, 0.12), transparent 29%),
+      linear-gradient(155deg, rgba(6, 16, 13, 0.88), rgba(3, 8, 7, 0.79));
+    -webkit-backdrop-filter: blur(13px) saturate(1.06);
+    backdrop-filter: blur(13px) saturate(1.06);
+  }
+
+  .draw-ritual-header {
+    min-height: 132px;
+    padding: max(12px, env(safe-area-inset-top)) 14px 13px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px 12px;
+    text-align: left;
+  }
+
+  .draw-ritual-close {
+    position: static;
+    min-width: 108px;
+    min-height: 44px;
+    padding: 0 12px;
+  }
+
+  #draw-ritual-deck {
+    position: static;
+    max-width: none;
+    justify-self: end;
+    font-size: 6px;
+    text-align: right;
+  }
+
+  .draw-ritual-heading {
+    grid-column: 1 / -1;
+  }
+
+  .draw-ritual-heading > span {
+    font-size: 6px;
+  }
+
+  .draw-ritual-heading h2 {
+    margin: 6px 0 4px;
+    font-size: 29px;
+  }
+
+  .draw-ritual-heading p {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .draw-ritual-body {
+    overflow: hidden;
+  }
+
+  .draw-panel {
+    padding: 16px 16px max(16px, env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
+  }
+
+  .draw-setup-grid {
+    grid-template-columns: 1fr;
+    gap: 17px;
+  }
+
+  .draw-question-block label strong {
+    margin-top: 5px;
+    font-size: 20px;
+  }
+
+  #draw-question {
+    min-height: 126px;
+    max-height: 180px;
+    margin-top: 12px;
+    padding: 13px 14px;
+    resize: none;
+    font-size: 15px;
+  }
+
+  .draw-question-meta {
+    margin-top: 7px;
+    gap: 10px;
+  }
+
+  .draw-question-meta p {
+    font-size: 8px;
+  }
+
+  .draw-methods legend {
+    margin-bottom: 6px;
+  }
+
+  .draw-method-option {
+    min-height: 62px;
+    margin-top: 6px;
+    padding: 9px 11px;
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .draw-method-sigil {
+    width: 32px;
+    height: 32px;
+  }
+
+  .draw-method-option small,
+  .draw-single-card-note span {
+    font-size: 10px;
+    line-height: 1.45;
+  }
+
+  .draw-single-card-note {
+    margin-top: 9px;
+    padding: 9px 10px;
+  }
+
+  .draw-panel-actions.is-end,
+  .draw-panel-actions.is-centered {
+    position: sticky;
+    z-index: 5;
+    bottom: -1px;
+    margin-top: 16px;
+    padding: 10px 0 max(1px, env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, transparent, rgba(4, 10, 8, 0.94) 32%);
+  }
+
+  .draw-primary-action,
+  .draw-secondary-action {
+    min-height: 48px;
+  }
+
+  .draw-shuffling-layout {
+    min-height: auto;
+    grid-template-columns: 1fr;
+    gap: 13px;
+  }
+
+  .draw-shuffle-stage {
+    height: clamp(210px, 34dvh, 288px);
+    min-height: 210px;
+  }
+
+  .draw-shuffle-stage::before {
+    width: 190px;
+  }
+
+  .draw-shuffle-stage::after {
+    width: 132px;
+  }
+
+  .draw-scatter-card {
+    width: 50px;
+  }
+
+  .draw-scatter-card:nth-child(1) { --draw-x: -112px; --draw-y: -45px; }
+  .draw-scatter-card:nth-child(2) { --draw-x: -61px; --draw-y: -69px; }
+  .draw-scatter-card:nth-child(3) { --draw-x: -8px; --draw-y: -63px; }
+  .draw-scatter-card:nth-child(4) { --draw-x: 57px; --draw-y: -68px; }
+  .draw-scatter-card:nth-child(5) { --draw-x: 108px; --draw-y: -31px; }
+  .draw-scatter-card:nth-child(6) { --draw-x: -113px; --draw-y: 39px; }
+  .draw-scatter-card:nth-child(7) { --draw-x: -64px; --draw-y: 51px; }
+  .draw-scatter-card:nth-child(8) { --draw-x: -14px; --draw-y: 28px; }
+  .draw-scatter-card:nth-child(9) { --draw-x: 42px; --draw-y: 50px; }
+  .draw-scatter-card:nth-child(10) { --draw-x: 100px; --draw-y: 39px; }
+  .draw-scatter-card:nth-child(11) { --draw-x: -38px; --draw-y: -8px; }
+  .draw-scatter-card:nth-child(12) { --draw-x: 34px; --draw-y: -14px; }
+
+  .draw-hold {
+    min-height: 82px;
+    padding: 12px 14px;
+    grid-template-columns: 43px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .draw-hold > i {
+    width: 43px;
+    height: 43px;
+  }
+
+  .draw-hold strong {
+    font-size: 16px;
+  }
+
+  .draw-progress-wrap {
+    margin: 11px 0 13px;
+  }
+
+  .draw-shuffle-controls .draw-panel-actions {
+    grid-template-columns: minmax(0, 1fr) minmax(112px, 0.72fr);
+  }
+
+  .draw-selecting {
+    padding-inline: 10px;
+  }
+
+  .draw-selection-head {
+    min-height: 110px;
+    gap: 18px;
+  }
+
+  .draw-selection-head h3 {
+    font-size: 21px;
+  }
+
+  .draw-slot {
+    width: 54px;
+  }
+
+  .draw-card-browser {
+    min-height: 170px;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    gap: 5px;
+  }
+
+  .draw-card-track {
+    min-height: 166px;
+    padding: 10px 7px;
+    gap: 10px;
+  }
+
+  .draw-choice {
+    min-width: 64px;
+    min-height: 133px;
+  }
+
+  .draw-track-arrow {
+    width: 44px;
+    height: 44px;
+  }
+
+  .draw-selecting .draw-panel-actions.is-centered {
+    width: min(278px, calc(100% - 12px));
+  }
+
+  .draw-ritual-feedback:has(#draw-error:not([hidden])) {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .reading-result-strip {
+    margin-top: 8px;
+    padding: 8px 9px;
+  }
+
+  #reading-question {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 420px) and (max-height: 740px) {
+  .draw-ritual-header {
+    min-height: 112px;
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-bottom: 9px;
+    gap: 5px 9px;
+  }
+
+  .draw-ritual-close {
+    min-width: 104px;
+    min-height: 44px;
+  }
+
+  .draw-ritual-heading > span {
+    display: none;
+  }
+
+  .draw-ritual-heading h2 {
+    margin: 2px 0 3px;
+    font-size: 25px;
+  }
+
+  .draw-panel {
+    padding: 11px 14px max(12px, env(safe-area-inset-bottom));
+  }
+
+  #draw-question {
+    min-height: 104px;
+    margin-top: 9px;
+  }
+
+  .draw-method-option {
+    min-height: 56px;
+  }
+
+  .draw-shuffle-stage {
+    height: clamp(190px, 31dvh, 218px);
+    min-height: 190px;
+  }
+
+  .draw-hold {
+    min-height: 70px;
+  }
+
+  .draw-progress-wrap {
+    margin: 8px 0 10px;
+  }
+
+  .draw-selection-head {
+    min-height: 94px;
+  }
+
+  .draw-card-browser {
+    min-height: 156px;
+  }
+
+  .draw-card-track {
+    min-height: 152px;
+  }
+
+  .draw-panel-actions.is-centered {
+    margin-top: 8px;
+  }
+}
+
+@media (min-width: 681px) and (max-height: 600px) {
+  #draw-ritual {
+    width: calc(100vw - 22px);
+    height: calc(100dvh - 14px);
+  }
+
+  .draw-ritual-header {
+    min-height: 100px;
+    padding: 13px 26px 10px;
+  }
+
+  .draw-ritual-close {
+    top: 13px;
+    left: 18px;
+    min-height: 44px;
+  }
+
+  #draw-ritual-deck {
+    top: 17px;
+    right: 20px;
+  }
+
+  .draw-ritual-heading > span {
+    font-size: 6px;
+  }
+
+  .draw-ritual-heading h2 {
+    margin: 4px 0 3px;
+    font-size: 27px;
+  }
+
+  .draw-ritual-heading p {
+    font-size: 9px;
+  }
+
+  .draw-panel {
+    padding: 13px 22px 16px;
+  }
+
+  .draw-setup-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(285px, 0.85fr);
+    gap: 28px;
+  }
+
+  .draw-question-block label strong {
+    font-size: 19px;
+  }
+
+  #draw-question {
+    min-height: 102px;
+    max-height: 118px;
+    margin-top: 9px;
+    padding: 11px 13px;
+  }
+
+  .draw-method-option {
+    min-height: 54px;
+    margin-top: 5px;
+    padding: 7px 10px;
+  }
+
+  .draw-method-option small {
+    margin-top: 2px;
+  }
+
+  .draw-single-card-note {
+    margin-top: 7px;
+    padding: 7px 9px;
+  }
+
+  .draw-panel-actions.is-end {
+    margin-top: 10px;
+  }
+
+  .draw-shuffling-layout {
+    grid-template-columns: minmax(330px, 1.15fr) minmax(265px, 0.85fr);
+    gap: 28px;
+  }
+
+  .draw-shuffle-stage {
+    height: 280px;
+    min-height: 260px;
+  }
+
+  .draw-hold {
+    min-height: 86px;
+  }
+
+  .draw-progress-wrap {
+    margin: 10px 0 12px;
+  }
+
+  .draw-selection-head {
+    min-height: 92px;
+  }
+
+  .draw-slot {
+    width: 48px;
+  }
+
+  .draw-card-browser {
+    min-height: 150px;
+  }
+
+  .draw-card-track {
+    min-height: 146px;
+    padding-block: 8px;
+  }
+
+  .draw-choice {
+    min-height: 126px;
+  }
+
+  .draw-panel-actions.is-centered {
+    margin-top: 7px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #draw-ritual,
+  #draw-ritual::backdrop,
+  #draw-ritual *,
+  #draw-ritual *::before,
+  #draw-ritual *::after,
+  .ritual-step-button {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .draw-choice.is-picked {
+    opacity: 0.35;
+    transform: none;
+  }
+
+  .draw-slot.is-filled,
+  .draw-slot.has-card,
+  #draw-slot > * {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}

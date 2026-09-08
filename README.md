@@ -14,9 +14,9 @@ GitHub Pages：<https://rayjingreal-ux.github.io/tarot/>
 - The Unveiled 完整 80 張校正版牌面與實體牌背（以 07 號為透視基準，保留四角圓角透明去背）
 - Woodland、Red Visions 各 78 張完整牌面
 - Prose Poem 80 張校正版牌面（完整 78 張，加上教皇與寶劍十替代圖稿各一張；盒面標示 83 張，現有素材缺 3 張）
-- 展開牌陣預設顯示牌背
-- 抽牌模式在翻至正面前隱藏牌名與編號
-- 選牌、上一張／下一張與正反面翻牌
+- 單張牌儀式：可留白的提問、按住洗牌／星光選牌、左右滑動牌背並選取
+- 選定後回到既有 3D 舞台，翻至正面前隱藏牌名與編號；本輪結果鎖定，可重新抽牌或收回牌盒
+- Prose Poem 的教皇與寶劍十 A/B 圖稿以同一牌義等機率抽取，一般瀏覽仍保留全部 80 張
 - 四副牌組的一般瀏覽／管理模式
 - The Unveiled、Red Visions 與 Prose Poem 的獨立校正工作檯
 - 依大阿爾克那與四個牌組分類篩選、逐張放大檢視
@@ -37,6 +37,10 @@ python -m http.server 8877
 - `index.html`：頁面結構與模組入口
 - `styles.css`：場景及操作介面樣式
 - `app.js`：Three.js 場景、牌盒與卡牌互動
+- `draw-ritual.js` / `draw-ritual.css`：抽牌儀式控制與響應式介面
+- `draw-session.js`：獨立洗牌、變體分組及單次選牌鎖定
+- `tests/draw-session.test.mjs`：四副牌組與抽牌規則測試（`node --test tests/draw-session.test.mjs`）
+- `RELEASE-20260909.md`：新版驗收路徑與備份／回退方式
 - `assets/cards/`：78 張透明 WebP 發佈牌圖
 - `assets/woodland/`：Woodland 牌盒與說明書材質
 - `assets/unveiled/`：The Unveiled 牌盒材質、80 張牌面、縮圖、清單與實體牌背

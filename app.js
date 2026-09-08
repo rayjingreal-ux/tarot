@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { createDrawRitual } from "./draw-ritual.js?v=20260909-01";
+import { markDrawRevealed } from "./draw-session.js?v=20260909-01";
 
 
 const MAJOR_ARCANA = [
@@ -115,7 +117,7 @@ function normalizeCardCatalog(payload, manifestUrl = null, deckKey = "woodland")
       const file = card.file ?? card.filename ?? card.path ?? card.front_file ?? card.front ?? card.texturePath ?? card.texture ?? card.image?.front ?? card.image ?? null;
       const thumbnailFile = card.thumbnail ?? card.thumb ?? card.preview ?? card.image?.thumbnail ?? null;
       const normalized = {
-        id: String(card.id ?? card.slug ?? fallback.id),
+        id: String(card.id ?? card.slug ?? `${deckKey}:${typeof file === "string" ? file : card.name ?? fallback.id}`),
         index: Number(card.index ?? card.order ?? index),
         numeral: String(card.numeral ?? card.roman ?? card.arcana ?? card.number ?? card.rank ?? fallback.numeral),
         name: String(card.name ?? card.title ?? card.name_en ?? card.label ?? fallback.name).toUpperCase(),
@@ -156,14 +158,7 @@ async function loadCardCatalog(deckKey) {
       }
     }
   }
-  const fallback = createFallbackCatalog().map((card) => ({
-    ...card,
-    src: resolveCardSource(card.file, null, null, deckKey) ?? createFallbackCardSource(card),
-    thumbnailSrc: resolveCardSource(card.file, null, null, deckKey) ?? createFallbackCardSource(card),
-    fallbackSrc: createFallbackCardSource(card),
-  }));
-  console.info("[arcana] using the embedded 78-card catalog; set window.WOODLAND_CARDS_MANIFEST when running from file:// to inject generated assets synchronously");
-  return fallback;
+  throw new Error(`The card catalog for ${deckKey} is unavailable`);
 }
 
 const DEFAULT_DECKS = {
@@ -687,6 +682,9 @@ function packageLabel(deckKey = activeDeckKey) {
 let activeMode = "box";
 let selectedCard = 0;
 let selectedFlipped = false;
+let drawRitual = null;
+let readingResult = null;
+let drawRestoreState = null;
 let cameraTween = null;
 let invokeAge = 99;
 let shakeTrauma = 0;
@@ -719,7 +717,7 @@ let cardSummonProgress = 0;
 let cardRailAssetsReady = false;
 let cardWebGLAssetsReady = false;
 let cardCatalogDeckKey = null;
-let cardCatalogLoadPromise = null;
+const cardCatalogLoads = new Map();
 let cardRailObserver = null;
 let browseRenderedDeckKey = null;
 let activeBrowseFilter = "all";
@@ -916,11 +914,13 @@ browseViewer.addEventListener("click", (event) => {
 
 window.addEventListener("keydown", (event) => {
   if (!inspectionVisible) return;
-  if (event.key === "Escape" && !browseViewer.open) leaveInspection();
+  if (drawRitual?.isOpen || event.defaultPrevented) return;
+  if (event.key === "Escape" && !browseViewer.open) { leaveInspection(); return; }
+  if (event.target.closest?.('input, textarea, select, button, a, [contenteditable="true"]')) return;
   if (activeMode === "cards" && !isCardTransitionActive()) {
-    if (event.key === "ArrowLeft") selectCard(selectedCard - 1);
-    if (event.key === "ArrowRight") selectCard(selectedCard + 1);
-    if (event.key === " " || event.key === "Enter") flipSelectedCard();
+    if (!readingResult && event.key === "ArrowLeft") selectCard(selectedCard - 1);
+    if (!readingResult && event.key === "ArrowRight") selectCard(selectedCard + 1);
+    if (event.key === " " || event.key === "Enter") { event.preventDefault(); flipSelectedCard(); }
   }
 });
 
@@ -1352,6 +1352,10 @@ function resetWoodlandInteraction() {
 
 function enterInspection(deckKey, initialMode = "box") {
   if (!DECKS[deckKey]) return;
+  drawRitual?.cancel({ restore: false });
+  readingResult = null;
+  drawRestoreState = null;
+  updateReadingResult();
   const currentFocus = document.activeElement;
   inspectionReturnFocus = currentFocus instanceof HTMLElement && cabinet.contains(currentFocus)
     ? currentFocus
@@ -1396,6 +1400,10 @@ function enterInspection(deckKey, initialMode = "box") {
 
 
 function leaveInspection() {
+  drawRitual?.cancel({ restore: false });
+  readingResult = null;
+  drawRestoreState = null;
+  updateReadingResult();
   setViewMenuOpen(false);
   const returnTarget = inspectionReturnFocus?.isConnected ? inspectionReturnFocus : approachButton;
   inspectionReturnFocus = null;
@@ -1423,9 +1431,14 @@ function leaveInspection() {
 
 function setMode(mode, userInitiated = false) {
   if (isCardTransitionActive()) return;
+  if (userInitiated && drawRitual?.isOpen) return;
   if (mode === "cards" && !DECKS[activeDeckKey].hasCards) return;
   if (mode === "cards" && isBookDeck(activeDeckKey) && !cardRevealComplete) return;
   if (mode === "browse" && !DECKS[activeDeckKey].hasCards) return;
+  if (mode === "cards" && userInitiated && !readingResult) {
+    drawRitual?.open();
+    return;
+  }
   activeMode = mode;
   document.querySelectorAll(".mode-tab").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.mode === mode);
@@ -1466,10 +1479,13 @@ function setMode(mode, userInitiated = false) {
       button.classList.toggle("is-active", button.dataset.view === "front");
     });
     queueCamera([0, 0.18, 4.55], [0, 0.01, 0.4], 760);
-    const cardToSelect = !isBookDeck(activeDeckKey) && userInitiated
-      ? Math.floor(Math.random() * CARDS.length)
-      : selectedCard;
-    selectCard(cardToSelect, false);
+    selectCard(readingResult?.index ?? selectedCard, false);
+    if (readingResult?.session.phase === "complete") {
+      selectedFlipped = false;
+      inspection.dataset.cardFace = "front";
+      flipCardButton.querySelector("span").textContent = "翻至背面";
+      updateSelectedCardInfo();
+    }
     triggerMysticEffect(0.35);
   } else {
     setCardCatalogOpen(false);
@@ -1490,6 +1506,7 @@ function setMode(mode, userInitiated = false) {
 
 
 function setCardCatalogOpen(open) {
+  if (open && readingResult) return;
   if (open && !cardRailAssetsReady) return;
   cardCatalogToggle.setAttribute("aria-expanded", String(open));
   cardCatalogPanel.hidden = !open;
@@ -1512,7 +1529,9 @@ function setCardInteractionLocked(locked) {
     returnDeckButton,
     cardCatalogToggle,
   ];
-  buttons.forEach((button) => { button.disabled = locked; });
+  buttons.forEach((button) => {
+    button.disabled = locked || Boolean(readingResult && ["previous-card", "next-card", "card-catalog-toggle"].includes(button.id));
+  });
   Array.from(cardRail.children).forEach((button) => { button.disabled = locked; });
   const boxModeTab = document.querySelector('.mode-tab[data-mode="box"]');
   boxModeTab.disabled = locked;
@@ -1595,6 +1614,7 @@ function setBoxOpen(value, { sound = false } = {}) {
 
 function selectCard(index, effect = true) {
   if (!CARDS.length) return;
+  if (readingResult && index !== readingResult.index) return;
   const previousCard = selectedCard;
   selectedCard = (index + CARDS.length) % CARDS.length;
   selectedFlipped = true;
@@ -1623,24 +1643,174 @@ function updateSelectedCardInfo(loadingFace = false) {
   cardName.textContent = CARDS[selectedCard].name;
 }
 
+function updateReadingResult() {
+  inspection.dataset.readingActive = String(Boolean(readingResult));
+  const strip = document.querySelector("#reading-result-strip");
+  if (!strip) return;
+  strip.hidden = !readingResult;
+  if (!readingResult) return;
+  const { session } = readingResult;
+  document.querySelector("#reading-question").textContent = session.question || "這一刻，留在心裡的問題";
+  document.querySelector("#reading-method").textContent = session.method === "starlight" ? "星光選牌 · 單張" : "手動選牌 · 單張";
+  document.querySelector("#reading-result-status").textContent = session.phase === "complete"
+    ? "這一輪的牌已揭曉；你可以細看牌面，或開始新一輪。"
+    : "1 / 1 已選定 · 點擊中央牌背或「翻至正面」揭曉";
+}
+
+function updateDrawEntry() {
+  const button = document.querySelector("#prepare-draw");
+  if (!button) return;
+  button.hidden = !inspectionVisible || activeMode !== "box" || !DECKS[activeDeckKey].hasCards
+    || (isBookDeck() && woodlandOpenTarget < 0.5);
+  if (button.hidden) return;
+  let label = "開始抽牌";
+  let disabled = Boolean(drawRitual?.isOpen || isCardTransitionActive() || woodlandPhase === WOODLAND_PHASE.SUMMONING);
+  if (isBookDeck()) {
+    if (guidebookExtractedTarget < 0.5) {
+      label = "取出說明書";
+      disabled ||= woodlandOpenCurrent < 0.98;
+    } else if (innerBoxExtractedTarget < 0.5) {
+      label = `取出${packageLabel()}`;
+      disabled ||= guidebookExtractedCurrent < 0.86;
+    } else {
+      disabled ||= innerBoxExtractedCurrent < 0.92;
+    }
+  }
+  if (button.textContent !== label) button.textContent = label;
+  button.disabled = disabled;
+}
+
+function cancelDrawAnimation() {
+  if (!drawRestoreState) return;
+  const snapshot = drawRestoreState;
+  drawRestoreState = null;
+  cardSummonStartedAt = 0;
+  cardSummonProgress = 0;
+  cardSummonAssetsReady = false;
+  pendingSummonCardIndex = null;
+  inspection.classList.remove("is-card-summoning");
+  resetCardTransitionState();
+  readingResult = snapshot.result;
+  cardRevealComplete = snapshot.revealComplete;
+  selectedCard = snapshot.index;
+  if (activeMode !== snapshot.mode) setMode(snapshot.mode, false);
+  setBoxOpen(snapshot.openTarget);
+  guidebookExtractedTarget = snapshot.guideTarget;
+  innerBoxExtractedTarget = snapshot.innerTarget;
+  innerBoxGlowTarget = snapshot.glowTarget;
+  cardRevealComplete = snapshot.revealComplete;
+  activeView = snapshot.view;
+  document.querySelectorAll(".view-button").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.view === snapshot.view);
+  });
+  currentViewLabel.textContent = VIEW_LABELS[snapshot.view] ?? snapshot.view;
+  (isBookDeck() ? woodlandRoot : unveiledRoot).rotation.copy(snapshot.rotation);
+  artifactTargetScale = snapshot.artifactScale;
+  artifactTargetPosition.copy(snapshot.artifactPosition);
+  queueCamera(snapshot.camera, snapshot.cameraTarget, deckCarouselReducedMotion.matches ? 1 : 400);
+  woodlandPhase = snapshot.phase;
+  inspection.dataset.woodlandPhase = woodlandPhase;
+  if (snapshot.phase === WOODLAND_PHASE.INNER_READY) inspection.classList.add("is-inner-box-ready");
+  selectedFlipped = snapshot.flipped;
+  inspection.dataset.cardFace = selectedFlipped ? "back" : "front";
+  flipCardButton.querySelector("span").textContent = selectedFlipped ? "翻至正面" : "翻至背面";
+  updateSelectedCardInfo();
+  updateReadingResult();
+  setCardInteractionLocked(false);
+  openButton.disabled = false;
+  showBoxFeedback("已返回；隨時可以重新開始抽牌", "active", 1800);
+}
+
+function initializeDrawRitual() {
+  drawRitual = createDrawRitual({
+    getContext: () => ({
+      deckKey: activeDeckKey,
+      name: DECKS[activeDeckKey].header,
+      backUrl: getDeckTextureUrl(activeDeckKey, DECKS[activeDeckKey].cardBack),
+    }),
+    onOpen() {
+      drawRestoreState = {
+        mode: activeMode, index: selectedCard, flipped: selectedFlipped,
+        phase: woodlandPhase, revealComplete: cardRevealComplete, result: readingResult,
+        openTarget: getActiveOpenTarget(), guideTarget: guidebookExtractedTarget,
+        innerTarget: innerBoxExtractedTarget, glowTarget: innerBoxGlowTarget,
+        view: activeView, camera: camera.position.toArray(), cameraTarget: controls.target.toArray(),
+        rotation: (isBookDeck() ? woodlandRoot : unveiledRoot).rotation.clone(), artifactScale: artifactTargetScale,
+        artifactPosition: artifactTargetPosition.clone(),
+      };
+      setCardCatalogOpen(false);
+      setViewMenuOpen(false);
+    },
+    loadDeck: ensureDeckCardExperience,
+    startAnimation() {
+      readingResult = null;
+      updateReadingResult();
+      if (isBookDeck() && woodlandPhase === WOODLAND_PHASE.INNER_READY && !cardRevealComplete) {
+        beginCardSummoning({ fromRitual: true });
+      } else {
+        cardRevealComplete = true;
+        setMode("cards", false);
+        beginCardRedraw(true);
+      }
+    },
+    async prepareSelection(index, session) {
+      if (!inspectionVisible || activeDeckKey !== session.deckKey || drawRitual.session !== session) throw new Error("Draw cancelled");
+      const texture = await ensureCardTexture(index);
+      if (!texture || activeDeckKey !== session.deckKey || drawRitual.session !== session) throw new Error("Card unavailable");
+    },
+    commitSelection(index, session) {
+      if (!inspectionVisible || activeDeckKey !== session.deckKey || drawRitual.session !== session) return;
+      readingResult = { index, session };
+      cardRevealComplete = true;
+      cardSummonAssetsReady = true;
+      selectCard(index, false);
+      setMode("cards", false);
+      setCardInteractionLocked(false);
+      updateCardAssetReadiness();
+      updateReadingResult();
+      drawRestoreState = null;
+      playCardSlide(1);
+    },
+    cancelAnimation: cancelDrawAnimation,
+    focusResult() { flipCardButton.focus({ preventScroll: true }); },
+  });
+  document.querySelector("#prepare-draw").addEventListener("click", () => {
+    if (isCardTransitionActive() || drawRitual.isOpen) return;
+    if (!isBookDeck()) drawRitual.open();
+    else if (guidebookExtractedTarget < 0.5) handleGuidebookClick();
+    else handleInnerBoxClick();
+  });
+}
+
 
 async function flipSelectedCard() {
-  if (activeMode !== "cards") return;
+  if (activeMode !== "cards" || !inspectionVisible || drawRitual?.isOpen || isCardTransitionActive() || flipCardButton.disabled) return;
+  const deckAtRequest = activeDeckKey;
+  const generationAtRequest = cardTextureGeneration;
+  const resultAtRequest = readingResult;
   const revealingFront = selectedFlipped;
   if (revealingFront && !isCardTextureReady(selectedCard)) {
     const requestedIndex = selectedCard;
     flipCardButton.disabled = true;
     inspection.dataset.cardTextureLoading = "true";
     updateSelectedCardInfo(true);
-    await ensureCardTexture(requestedIndex);
+    const prepared = await ensureCardTexture(requestedIndex);
+    if (deckAtRequest !== activeDeckKey || generationAtRequest !== cardTextureGeneration || resultAtRequest !== readingResult || !inspectionVisible) return;
     delete inspection.dataset.cardTextureLoading;
     flipCardButton.disabled = false;
     if (requestedIndex !== selectedCard || activeMode !== "cards") return;
+    if (!prepared) {
+      updateSelectedCardInfo();
+      document.querySelector("#reading-result-status").textContent = "牌面載入失敗，請再次翻牌重試；抽定的牌會保留。";
+      return;
+    }
   }
   selectedFlipped = !selectedFlipped;
   inspection.dataset.cardFace = selectedFlipped ? "back" : "front";
   flipCardButton.querySelector("span").textContent = selectedFlipped ? "翻至正面" : "翻至背面";
   updateSelectedCardInfo();
+  if (readingResult && !selectedFlipped) markDrawRevealed(readingResult.session);
+  updateReadingResult();
   triggerMysticEffect(0.12);
   playCardFlip(selectedFlipped ? 1 : -1);
 }
@@ -2794,7 +2964,7 @@ async function ensureCardTexture(index) {
   if (cardTexturePromises.has(index)) return cardTexturePromises.get(index);
   const deckKeyAtRequest = cardCatalogDeckKey;
   const generationAtRequest = cardTextureGeneration;
-  const request = loadColorTexture(CARDS[index].src, CARDS[index].fallbackSrc)
+  const request = loadColorTexture(CARDS[index].src)
     .then((texture) => {
       if (deckKeyAtRequest !== cardCatalogDeckKey || generationAtRequest !== cardTextureGeneration) {
         texture.dispose();
@@ -2867,10 +3037,18 @@ function initializeCardMeshes(deckKey) {
 async function ensureDeckCardExperience(deckKey) {
   if (!DECKS[deckKey]?.hasCards) return [];
   if (cardCatalogDeckKey === deckKey && cardWebGLAssetsReady) return CARDS;
-  if (cardCatalogLoadPromise) return cardCatalogLoadPromise;
-  cardCatalogLoadPromise = (async () => {
-    const catalog = await loadCardCatalog(deckKey);
+  if (!cardCatalogLoads.has(deckKey)) {
+    const request = loadCardCatalog(deckKey).catch((error) => {
+      if (cardCatalogLoads.get(deckKey) === request) cardCatalogLoads.delete(deckKey);
+      throw error;
+    });
+    cardCatalogLoads.set(deckKey, request);
+  }
+  try {
+    const catalog = await cardCatalogLoads.get(deckKey);
+    if (activeDeckKey !== deckKey || !inspectionVisible) return [];
     if (!catalog.length) throw new Error(`No cards available for ${deckKey}`);
+    if (cardCatalogDeckKey === deckKey && cardWebGLAssetsReady) return CARDS;
     CARDS = catalog;
     selectedCard = Math.min(selectedCard, CARDS.length - 1);
     cardCatalogDeckKey = deckKey;
@@ -2878,14 +3056,14 @@ async function ensureDeckCardExperience(deckKey) {
     initializeCardMeshes(deckKey);
     inspection.dataset.cardManifest = deckKey;
     return CARDS;
-  })().catch((error) => {
+  } catch (error) {
     console.error("[arcana] unable to initialize deck cards", error);
-    showBoxFeedback("牌組清單載入失敗，請重新整理後再試", "muted", 3200);
+    if (activeDeckKey === deckKey && inspectionVisible) {
+      showBoxFeedback("牌組清單載入失敗，可重新開始抽牌再試", "muted", 3200);
+      if (activeMode === "browse") browseCardGrid.innerHTML = '<p class="browse-loading">牌組暫時無法載入，請回到牌盒重試。</p>';
+    }
     return [];
-  }).finally(() => {
-    cardCatalogLoadPromise = null;
-  });
-  return cardCatalogLoadPromise;
+  }
 }
 
 let returnBeamPositions = new Float32Array(0);
@@ -3137,12 +3315,13 @@ function handleInnerBoxClick() {
   showBoxFeedback(`${label}正在移動，請稍候`, "waiting");
 }
 
-function beginCardSummoning() {
+function beginCardSummoning({ fromRitual = false } = {}) {
   if (
     woodlandPhase !== WOODLAND_PHASE.INNER_READY ||
     innerBoxExtractedCurrent < 0.92 ||
     cardSummonStartedAt > 0
   ) return;
+  if (!fromRitual) { drawRitual?.open(); return; }
   woodlandPhase = WOODLAND_PHASE.SUMMONING;
   cardSummonStartedAt = performance.now();
   cardSummonProgress = 0;
@@ -3157,23 +3336,23 @@ function beginCardSummoning() {
   inspection.dataset.woodlandPhase = woodlandPhase;
   playInvocationSound();
   triggerMysticEffect(0.48);
-  showBoxFeedback("正在讀取牌組清單與首張牌面，召喚光線將保持至完成", "waiting", 0);
+  showBoxFeedback("牌組正沿光線聚攏，在心裡留住你的問題", "waiting", 0);
   void prepareCardSummoningAssets();
 }
 
 async function prepareCardSummoningAssets() {
-    const cards = await ensureDeckCardExperience(activeDeckKey);
-  if (woodlandPhase !== WOODLAND_PHASE.SUMMONING || !cards.length) return;
-  pendingSummonCardIndex = Math.floor(Math.random() * cards.length);
-  await ensureCardTexture(pendingSummonCardIndex);
-  if (woodlandPhase !== WOODLAND_PHASE.SUMMONING) return;
+  const deckKey = activeDeckKey;
+  const startedAt = cardSummonStartedAt;
+  const cards = await ensureDeckCardExperience(deckKey);
+  if (activeDeckKey !== deckKey || cardSummonStartedAt !== startedAt || woodlandPhase !== WOODLAND_PHASE.SUMMONING || !cards.length) return;
+  // Only backs are needed for the ritual. A face is loaded after a choice locks.
+  pendingSummonCardIndex = null;
   cardSummonAssetsReady = true;
   updateCardAssetReadiness();
 }
 
 function completeCardSummoning() {
   if (woodlandPhase !== WOODLAND_PHASE.SUMMONING) return;
-  const randomIndex = pendingSummonCardIndex ?? Math.floor(Math.random() * CARDS.length);
   cardSummonStartedAt = 0;
   cardSummonProgress = 1;
   cardRevealComplete = true;
@@ -3181,17 +3360,19 @@ function completeCardSummoning() {
   cardsModeTab.title = `檢視完整 ${CARDS.length} 張牌面`;
   inspection.classList.remove("is-card-summoning");
   inspection.removeAttribute("aria-busy");
-  selectCard(randomIndex, false);
-  showBoxFeedback("牌組已就緒，其餘牌面將在需要時載入", "active", 2100);
+  selectCard(0, false);
+  showBoxFeedback("牌組已就緒，請選一張牌", "active", 2100);
   setMode("cards", false);
   inspection.dataset.woodlandPhase = WOODLAND_PHASE.CARDS;
-  playCardSlide(randomIndex >= CARDS.length / 2 ? 1 : -1);
+  drawRitual?.animationComplete();
+  playCardSlide(1);
   triggerMysticEffect(0.72);
 }
 
 
-function beginCardRedraw() {
+function beginCardRedraw(fromRitual = false) {
   if (activeMode !== "cards" || !cardRevealComplete || isCardTransitionActive()) return;
+  if (fromRitual !== true) { drawRitual?.open(); return; }
   setCardCatalogOpen(false);
   cardRedrawStartedAt = performance.now();
   cardRedrawProgress = 0;
@@ -3200,8 +3381,8 @@ function beginCardRedraw() {
   inspection.dataset.cardTransition = "redraw";
   inspection.classList.add("is-card-redrawing");
   inspection.setAttribute("aria-busy", "true");
-  cardIndex.textContent = "重新抽牌 · 3 秒";
-  cardName.textContent = "命運環行中";
+  cardIndex.textContent = "星光聚攏中";
+  cardName.textContent = "正在整理這一輪的牌";
   setCardInteractionLocked(true);
   playInvocationSound();
   triggerMysticEffect(0.36);
@@ -3210,16 +3391,15 @@ function beginCardRedraw() {
 
 function finishCardRedraw() {
   if (cardRedrawStartedAt <= 0) return;
-  const offset = 1 + Math.floor(Math.random() * Math.max(1, CARDS.length - 1));
-  const nextCard = (selectedCard + offset) % CARDS.length;
   cardRedrawStartedAt = 0;
   cardRedrawProgress = 0;
   inspection.classList.remove("is-card-redrawing");
   delete inspection.dataset.cardTransition;
   inspection.removeAttribute("aria-busy");
-  selectCard(nextCard, false);
+  selectCard(selectedCard, false);
   setCardInteractionLocked(false);
-  playCardSlide(offset >= CARDS.length / 2 ? -1 : 1);
+  drawRitual?.animationComplete();
+  playCardSlide(1);
   triggerMysticEffect(0.58);
 }
 
@@ -3233,6 +3413,9 @@ function setDeckReturnStage(stage, now) {
 
 function beginDeckReturn() {
   if (activeMode !== "cards" || !cardRevealComplete || isCardTransitionActive()) return;
+  if (drawRitual?.isOpen) return;
+  readingResult = null;
+  updateReadingResult();
   const now = performance.now();
   setCardCatalogOpen(false);
   deckReturnStartedAt = now;
@@ -3347,7 +3530,7 @@ function updateCardTransitions(now) {
 }
 
 renderer.domElement.addEventListener("click", (event) => {
-  if (activeMode !== "cards" || isCardTransitionActive()) return;
+  if (!inspectionVisible || drawRitual?.isOpen || activeMode !== "cards" || isCardTransitionActive()) return;
   setPointerFromEvent(event);
   const hit = raycaster.intersectObjects(cardMeshes, true)[0];
   if (!hit) return;
@@ -3355,7 +3538,7 @@ renderer.domElement.addEventListener("click", (event) => {
   while (cardRoot.parent !== cardsGroup && cardRoot.parent) cardRoot = cardRoot.parent;
   const index = cardRoot.userData.cardIndex;
   if (index === selectedCard) flipSelectedCard();
-  else selectCard(index);
+  else if (!readingResult) selectCard(index);
 });
 
 renderer.domElement.addEventListener("pointermove", (event) => {
@@ -3471,7 +3654,7 @@ function updateCards(dt, time) {
       returnBeamPositions[offset + 3] = card.position.x;
       returnBeamPositions[offset + 4] = card.position.y + (0.82 + (1 - progress) * 0.72);
       returnBeamPositions[offset + 5] = card.position.z;
-    } else if (redrawing) {
+    } else if (redrawing && !deckCarouselReducedMotion.matches) {
       const angle = index / CARDS.length * Math.PI * 2 + cardRedrawProgress * Math.PI * 4;
       const radius = 1.22 + Math.sin(cardRedrawProgress * Math.PI) * 0.48;
       const targetX = Math.cos(angle) * radius;
@@ -3591,7 +3774,8 @@ function updateInnerBoxEffects(dt, time, now) {
     : heldRayPulse;
   innerBoxEdgeMaterial.opacity = Math.min(1, 0.72 + Math.sin(time * 14) * 0.2);
   innerBoxGlowLight.intensity = 3.2 + Math.sin(time * 16) * 0.55;
-  if (summonElapsed >= CARD_SUMMON_MIN_DURATION_MS && areCardAssetsReady()) completeCardSummoning();
+  const minimumDuration = deckCarouselReducedMotion.matches ? 250 : CARD_SUMMON_MIN_DURATION_MS;
+  if (summonElapsed >= minimumDuration && areCardAssetsReady()) completeCardSummoning();
 }
 
 
@@ -3713,6 +3897,7 @@ function animate(now) {
   activeRoot.scale.setScalar(scale);
 
   updateCardTransitions(now);
+  updateDrawEntry();
   updateCards(dt, time);
   updateArtifactPresentation(dt);
   updateCardFocus(dt, time);
@@ -3765,6 +3950,8 @@ setDeckCarouselCurrent(deckCarouselCurrentIndex);
 if (deckCarouselHadFocus) getDeckCarouselSlides()[deckCarouselCurrentIndex]?.focus({ preventScroll: true });
 cardsGroup.visible = false;
 setBoxOpen(0);
+
+initializeDrawRitual();
 
 const requestedParameters = new URLSearchParams(window.location.search);
 const requestedDeck = requestedParameters.get("deck");

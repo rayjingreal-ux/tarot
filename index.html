@@ -6,7 +6,8 @@
     <meta name="theme-color" content="#050807" />
     <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
     <title>Arcana Cabinet｜塔羅藏書室</title>
-    <link rel="stylesheet" href="./styles.css?v=20260908-01" />
+    <link rel="stylesheet" href="./styles.css?v=20260909-01" />
+    <link rel="stylesheet" href="./draw-ritual.css?v=20260909-01" />
     <script type="importmap">
       {
         "imports": {
@@ -117,6 +118,7 @@
         <div id="box-controls" class="box-controls">
           <button id="open-box" class="open-button" type="button"><span>打開磁吸書型盒</span><i>↗</i></button>
           <p class="box-sequence-hint" aria-live="polite">單擊外盒開啟 · 單擊說明書取出／翻面 · 單擊內卡盒浮出 · 再單擊抽牌</p>
+          <button id="prepare-draw" class="ritual-step-button" type="button" hidden><span>繼續開盒</span><i aria-hidden="true">↗</i></button>
           <button id="view-menu-toggle" class="view-menu-toggle" type="button" aria-expanded="false" aria-controls="view-menu-panel">
             <span>六面檢視</span><small id="current-view-label">正面</small><i aria-hidden="true">⌃</i>
           </button>
@@ -135,13 +137,18 @@
 
         <div id="card-controls" class="card-controls" aria-hidden="true">
           <div class="selected-card-title" aria-live="polite"><small id="card-index">ARCANA ···</small><b id="card-name">尚未翻牌</b></div>
+          <div id="reading-result-strip" class="reading-result-strip" hidden>
+            <p id="reading-question">未留下問題</p>
+            <span id="reading-method">抽牌儀式</span>
+            <span id="reading-result-status">等待翻牌</span>
+          </div>
           <div class="card-actions">
             <button id="previous-card" type="button" aria-label="上一張牌">←</button>
             <button id="flip-card" type="button"><span>翻至正面</span><i>↻</i></button>
             <button id="next-card" type="button" aria-label="下一張牌">→</button>
           </div>
           <div class="deck-flow-actions">
-            <button id="redraw-card" type="button"><span>重新抽牌</span><small>3 秒環行</small></button>
+            <button id="redraw-card" type="button"><span>重新抽牌</span><small>開啟新一輪</small></button>
             <button id="return-deck" type="button"><span>收回牌盒</span><small>依序歸位</small></button>
           </div>
           <button id="card-catalog-toggle" class="card-catalog-toggle" type="button" aria-expanded="false" aria-controls="card-catalog-panel">
@@ -152,6 +159,117 @@
             <p>圓角去背牌面、約 1 mm 西卡紙厚度、紙白亮邊與隨角度滑動的柔和油墨反光；方向鍵切換，再次點選即可翻面。</p>
           </div>
         </div>
+
+        <dialog id="draw-ritual" class="draw-ritual" aria-labelledby="draw-ritual-title" data-phase="setup">
+          <div class="draw-ritual-shell">
+            <header class="draw-ritual-header">
+              <button id="draw-ritual-close" class="draw-ritual-close" type="button" aria-label="返回牌盒">
+                <i aria-hidden="true">←</i><span>返回牌盒</span>
+              </button>
+              <p id="draw-ritual-deck">SELECTED DECK · 準備抽牌</p>
+              <div class="draw-ritual-heading">
+                <span>ONE CARD RITUAL</span>
+                <h2 id="draw-ritual-title">抽出一張牌</h2>
+                <p id="draw-ritual-status" role="status" aria-live="polite" aria-atomic="true">寫下一個問題，選擇你的洗牌方式。</p>
+              </div>
+            </header>
+
+            <div class="draw-ritual-body">
+              <section class="draw-panel draw-setup" data-draw-panel="setup" aria-labelledby="draw-setup-title">
+                <div class="draw-setup-grid">
+                  <div class="draw-question-block">
+                    <label for="draw-question">
+                      <span>YOUR QUESTION</span>
+                      <strong id="draw-setup-title">此刻，你想問什麼？</strong>
+                    </label>
+                    <textarea id="draw-question" maxlength="200" rows="5" placeholder="把問題留在這裡……"></textarea>
+                    <div class="draw-question-meta">
+                      <p>單張牌適合回應一個清晰問題；也可以留白，單純接收此刻的訊息。</p>
+                      <output id="draw-question-count" for="draw-question">0 / 200</output>
+                    </div>
+                  </div>
+
+                  <fieldset class="draw-methods">
+                    <legend>選擇抽牌方式</legend>
+                    <label class="draw-method-option">
+                      <input type="radio" name="draw-method" value="manual" checked />
+                      <span class="draw-method-sigil" aria-hidden="true">✦</span>
+                      <span><strong>手動洗牌</strong><small>按住牌陣，親手完成這次洗牌。</small></span>
+                    </label>
+                    <label class="draw-method-option">
+                      <input type="radio" name="draw-method" value="starlight" />
+                      <span class="draw-method-sigil" aria-hidden="true">☾</span>
+                      <span><strong>星光選牌</strong><small>讓星光替你洗牌，安靜等待牌面靠近。</small></span>
+                    </label>
+                    <div class="draw-single-card-note">
+                      <i aria-hidden="true"></i>
+                      <p><strong>單張牌指引</strong><span>一次只抽一張。牌面將在選定後回到 3D 舞台，等待你親手翻開。</span></p>
+                    </div>
+                  </fieldset>
+                </div>
+                <footer class="draw-panel-actions is-end">
+                  <button id="draw-start" class="draw-primary-action" type="button"><span>開始抽牌</span><i aria-hidden="true">→</i></button>
+                </footer>
+              </section>
+
+              <section class="draw-panel draw-shuffling" data-draw-panel="shuffling" aria-labelledby="draw-shuffling-title" hidden>
+                <h3 id="draw-shuffling-title" class="sr-only">洗牌</h3>
+                <div class="draw-shuffling-layout">
+                  <div class="draw-shuffle-stage" aria-hidden="true">
+                    <div class="draw-starlight-field"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                    <div class="draw-scatter-deck">
+                      <i class="draw-scatter-card"></i><i class="draw-scatter-card"></i><i class="draw-scatter-card"></i>
+                      <i class="draw-scatter-card"></i><i class="draw-scatter-card"></i><i class="draw-scatter-card"></i>
+                      <i class="draw-scatter-card"></i><i class="draw-scatter-card"></i><i class="draw-scatter-card"></i>
+                      <i class="draw-scatter-card"></i><i class="draw-scatter-card"></i><i class="draw-scatter-card"></i>
+                    </div>
+                    <span class="draw-shuffle-orbit"></span>
+                  </div>
+
+                  <div class="draw-shuffle-controls">
+                    <button id="draw-hold" class="draw-hold" type="button" title="按住滑鼠或空白鍵洗牌；按 Enter 自動完成洗牌">
+                      <i aria-hidden="true">✦</i><span><strong>按住洗牌</strong><small>按住指尖或空白鍵 · Enter 自動洗牌</small></span>
+                    </button>
+                    <div class="draw-progress-wrap">
+                      <progress id="draw-progress" max="100" value="0">0%</progress>
+                      <output id="draw-progress-label" for="draw-progress">尚未開始 · 0%</output>
+                    </div>
+                    <div class="draw-panel-actions">
+                      <button id="draw-collect" class="draw-primary-action" type="button" disabled><span>洗好了，展牌</span><i aria-hidden="true">→</i></button>
+                      <button id="draw-skip" class="draw-secondary-action" type="button">自動選牌</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="draw-panel draw-selecting" data-draw-panel="selecting" aria-labelledby="draw-selecting-title" hidden>
+                <div class="draw-selection-head">
+                  <div>
+                    <span>TRUST THE FIRST PULL</span>
+                    <h3 id="draw-selecting-title">憑直覺選一張</h3>
+                    <p id="draw-selection-count" aria-live="polite">尚未選牌 · 0 / 1</p>
+                  </div>
+                  <div id="draw-slot" class="draw-slot" role="img" aria-label="選中牌背"></div>
+                </div>
+
+                <div class="draw-card-browser">
+                  <button id="draw-cards-previous" class="draw-track-arrow is-previous" type="button" aria-controls="draw-card-track" aria-label="上一區牌">←</button>
+                  <div id="draw-card-track" class="draw-card-track" role="group" aria-label="可左右滑動的牌面選擇"></div>
+                  <button id="draw-cards-next" class="draw-track-arrow is-next" type="button" aria-controls="draw-card-track" aria-label="下一區牌">→</button>
+                </div>
+
+                <footer class="draw-panel-actions is-centered">
+                  <button id="draw-auto-pick" class="draw-secondary-action" type="button">交給牌組自動選牌</button>
+                </footer>
+              </section>
+            </div>
+
+            <div class="draw-ritual-feedback">
+              <p id="draw-error" role="alert" hidden>抽牌暫時中斷，請再試一次。</p>
+              <button id="draw-retry" type="button" hidden>重新嘗試</button>
+            </div>
+          </div>
+        </dialog>
 
         <section id="browse-panel" class="browse-panel" aria-hidden="true" aria-label="一般卡牌瀏覽與管理">
           <header class="browse-header">
@@ -198,6 +316,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260908-01"></script>
+    <script type="module" src="./app.js?v=20260909-01"></script>
   </body>
 </html>
