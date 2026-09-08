@@ -172,6 +172,13 @@ const DEFAULT_DECKS = {
     header: "THE UNVEILED TAROT",
     selectorCover: "front.jpg",
     selectorMeta: "COLLECTION 01 · 80 CARDS",
+    selector3D: {
+      width: 1,
+      height: 1.54,
+      depth: 0.54,
+      edgeColor: "#c7b39f",
+      faces: { front: "front.jpg", back: "back.jpg", left: "left.jpg", right: "right.jpg", top: "top.jpg" },
+    },
     kicker: "DREAM, SYMBOL & REVELATION",
     title: "THE UNVEILED<br /><em>Tarot</em>",
     description: "硬紙盒外套、可滑出的內抽屜與完整八十張已校正牌面，包含 The Mob 與 The Puppeteer 兩張獨有大牌。",
@@ -194,6 +201,14 @@ const DEFAULT_DECKS = {
     header: "WOODLAND FAIRY TALE TAROT",
     selectorCover: "outer-front.jpg",
     selectorMeta: "COLLECTION 02 · 78 CARDS",
+    selector3D: {
+      width: 1.18,
+      height: 1.55,
+      depth: 0.34,
+      coverDepth: 0.055,
+      edgeColor: "#335853",
+      faces: { front: "outer-front.jpg", back: "outer-back.jpg", inside: "outer-inside.jpg", left: "outer-left.jpg", right: "outer-right.jpg", top: "outer-top.jpg", bottom: "outer-bottom.jpg" },
+    },
     kicker: "MAGIC, FOLKLORE & PLANTS",
     title: "WOODLAND<br /><em>Fairy Tale</em> TAROT",
     description: "磁吸書型外盒、可取出的說明書、內卡盒與完整七十八張牌面，依照 411495–411497 的拆件狀態重建。",
@@ -220,6 +235,14 @@ const DEFAULT_DECKS = {
     header: "RED VISIONS TAROT",
     selectorCover: "outer-front.jpg",
     selectorMeta: "COLLECTION 03 · 78 CARDS",
+    selector3D: {
+      width: 1.18,
+      height: 1.55,
+      depth: 0.34,
+      coverDepth: 0.055,
+      edgeColor: "#5b1719",
+      faces: { front: "outer-front.jpg", back: "outer-back.jpg", inside: "outer-inside.jpg", left: "outer-left.jpg", right: "outer-right.jpg", top: "outer-top.jpg", bottom: "outer-bottom.jpg" },
+    },
     kicker: "LIBER SOMNIA · DREAM VISIONS",
     title: "RED VISIONS<br /><em>Tarot</em>",
     description: "深紅磁吸書型牌盒、說明書、內卡盒與完整七十八張已校正牌面，依實拍素材重建。",
@@ -247,6 +270,14 @@ const DEFAULT_DECKS = {
     header: "PROSE POEM TAROT",
     selectorCover: "outer-front.jpg",
     selectorMeta: "COLLECTION 04 · 80 / 83",
+    selector3D: {
+      width: 1.18,
+      height: 1.55,
+      depth: 0.34,
+      coverDepth: 0.055,
+      edgeColor: "#b77716",
+      faces: { front: "outer-front.jpg", back: "outer-back.jpg", inside: "outer-inside.jpg", left: "outer-left.jpg", right: "outer-right.jpg", top: "outer-top.jpg", bottom: "outer-bottom.jpg" },
+    },
     kicker: "LIGHT, FLIGHT & POETIC IMAGE",
     title: "PROSE POEM<br /><em>Tarot</em>",
     description: "暖金磁吸書型盒、可取出的說明書與直置牌托；牌盒標示 83 張，現有素材提供 80 張校正版牌面，並保留教皇與寶劍十各一張替代圖稿。",
@@ -291,7 +322,21 @@ function normalizeDeckIndex(payload, manifestUrl = null) {
   entries.forEach(([id, deck]) => {
     if (!id || !deck || typeof deck !== "object") return;
     const fallback = DEFAULT_DECKS[id] ?? {};
-    const merged = { ...fallback, ...deck, id };
+    const fallbackSelector = fallback.selector3D ?? {};
+    const suppliedSelector = deck.selector3D && typeof deck.selector3D === "object" ? deck.selector3D : {};
+    const merged = {
+      ...fallback,
+      ...deck,
+      id,
+      selector3D: {
+        ...fallbackSelector,
+        ...suppliedSelector,
+        faces: {
+          ...(fallbackSelector.faces ?? {}),
+          ...(suppliedSelector.faces ?? {}),
+        },
+      },
+    };
     merged.cardManifest = resolveManifestUrl(merged.cardManifest, manifestUrl);
     merged.workbench = resolveManifestUrl(merged.workbench, manifestUrl);
     merged.textureRoot = resolveManifestUrl(merged.textureRoot, manifestUrl);
@@ -387,8 +432,22 @@ const deckWorkbenchLink = document.querySelector("#deck-workbench-link");
 const deckWorkbenchNumber = document.querySelector("#deck-workbench-number");
 const deckWorkbenchTitle = document.querySelector("#deck-workbench-title");
 const deckEntries = Object.entries(DECKS);
+const deckCarouselReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 let deckCarouselCurrentIndex = 0;
 let deckCarouselAnnouncementTimer = null;
+let deckCarouselMotionActive = false;
+let deckCarouselScrollTargetIndex = null;
+let deckCarouselScrollTargetStartedAt = 0;
+let deckCarousel3DReady = false;
+let deckCarousel3DRenderer = null;
+let deckCarousel3DCanvas = null;
+let deckCarousel3DEntries = [];
+let deckCarousel3DGlowTexture = null;
+const deckCarousel3DFailedIndices = new Set();
+let deckCarousel3DActiveIndex = -1;
+let deckCarousel3DWidth = 0;
+let deckCarousel3DHeight = 0;
+let inspectionVisible = false;
 let inspectionReturnFocus = null;
 let feedbackResetTimer = null;
 
@@ -460,7 +519,7 @@ function updateDeckWorkbench(deckKey) {
 }
 
 function getDeckCarouselBehavior() {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  return deckCarouselReducedMotion.matches ? "auto" : "smooth";
 }
 
 function resetCabinetScroll() {
@@ -489,10 +548,29 @@ function focusWhenVisible(target, timeout = 5000) {
   requestAnimationFrame(attemptFocus);
 }
 
+function getDeckCarouselTargetLeft(slide) {
+  const rawLeft = slide.offsetLeft - (deckCarouselTrack.clientWidth - slide.offsetWidth) / 2;
+  const maximumLeft = Math.max(0, deckCarouselTrack.scrollWidth - deckCarouselTrack.clientWidth);
+  return Math.max(0, Math.min(rawLeft, maximumLeft));
+}
+
+function isDeckCarouselSlideCentered(index, tolerance = 2) {
+  const slide = getDeckCarouselSlides()[index];
+  if (!slide) return false;
+  const trackRect = deckCarouselTrack.getBoundingClientRect();
+  const slideRect = slide.getBoundingClientRect();
+  return Math.abs((slideRect.left + slideRect.width / 2) - (trackRect.left + trackRect.width / 2)) <= tolerance;
+}
+
 function centerDeckCarouselSlide(slide) {
-  const left = slide.offsetLeft - (deckCarouselTrack.clientWidth - slide.offsetWidth) / 2;
-  deckCarouselTrack.scrollTo({ left, behavior: getDeckCarouselBehavior() });
+  const index = getDeckCarouselSlides().indexOf(slide);
+  if (index < 0) return;
+  deckCarouselScrollTargetIndex = index;
+  deckCarouselScrollTargetStartedAt = performance.now();
+  setDeckCarouselMotionActive(true);
+  deckCarouselTrack.scrollTo({ left: getDeckCarouselTargetLeft(slide), behavior: getDeckCarouselBehavior() });
   resetCabinetScroll();
+  queueDeckCarouselSync();
 }
 
 function setDeckCarouselCurrent(index, { scroll = false, focus = false, announce = false } = {}) {
@@ -536,18 +614,47 @@ function findCenteredDeckIndex() {
   }, 0);
 }
 
-function syncDeckCarousel({ announce = false, reconcileFocus = false } = {}) {
-  const nextIndex = findCenteredDeckIndex();
+function syncDeckCarousel({ announce = false, reconcileFocus = false, settle = false } = {}) {
+  if (settle && deckCarouselScrollTargetIndex !== null
+    && !isDeckCarouselSlideCentered(deckCarouselScrollTargetIndex)) {
+    if (performance.now() - deckCarouselScrollTargetStartedAt >= 2600) {
+      const targetIndex = deckCarouselScrollTargetIndex;
+      const targetSlide = getDeckCarouselSlides()[targetIndex];
+      if (targetSlide) deckCarouselTrack.scrollTo({ left: getDeckCarouselTargetLeft(targetSlide), behavior: "auto" });
+      requestAnimationFrame(() => {
+        if (deckCarouselScrollTargetIndex === targetIndex) {
+          syncDeckCarousel({ announce, reconcileFocus, settle: true });
+        }
+      });
+    } else {
+      queueDeckCarouselSync();
+    }
+    return;
+  }
+
+  const nextIndex = deckCarouselScrollTargetIndex ?? findCenteredDeckIndex();
   setDeckCarouselCurrent(nextIndex, { announce });
+  if (settle) {
+    deckCarouselScrollTargetIndex = null;
+    deckCarouselScrollTargetStartedAt = 0;
+    setDeckCarouselMotionActive(false);
+  }
   if (!reconcileFocus || !deckCarouselTrack.contains(document.activeElement)) return;
   const currentSlide = getDeckCarouselSlides()[nextIndex];
   if (document.activeElement !== currentSlide) currentSlide.focus({ preventScroll: true });
 }
 
+function setDeckCarouselMotionActive(active) {
+  deckCarouselMotionActive = active;
+  deckCarousel.classList.toggle("is-carousel-scrolling", active);
+  deckCarousel.classList.toggle("is-carousel-settled", !active);
+  refreshDeckCarousel3DPreview();
+}
+
 function queueDeckCarouselSync() {
   window.clearTimeout(deckCarouselAnnouncementTimer);
   deckCarouselAnnouncementTimer = window.setTimeout(() => {
-    syncDeckCarousel({ announce: true, reconcileFocus: true });
+    syncDeckCarousel({ announce: true, reconcileFocus: true, settle: true });
   }, 160);
 }
 
@@ -562,6 +669,7 @@ function setDeckPickerInteractive(interactive) {
 
 buildDeckCarousel();
 setDeckCarouselCurrent(0);
+setDeckCarouselMotionActive(false);
 setDeckPickerInteractive(false);
 
 let activeDeckKey = "woodland";
@@ -579,7 +687,6 @@ function packageLabel(deckKey = activeDeckKey) {
 let activeMode = "box";
 let selectedCard = 0;
 let selectedFlipped = false;
-let inspectionVisible = false;
 let cameraTween = null;
 let invokeAge = 99;
 let shakeTrauma = 0;
@@ -653,6 +760,7 @@ approachButton.addEventListener("click", () => {
   resetCabinetScroll();
   archive.dataset.phase = "choose";
   setDeckPickerInteractive(true);
+  setDeckCarouselMotionActive(false);
   scheduleSceneViewUpdate();
   focusWhenVisible(() => {
     if (archive.dataset.phase !== "choose" || inspectionVisible) return null;
@@ -664,6 +772,7 @@ approachButton.addEventListener("click", () => {
 retreatButton.addEventListener("click", () => {
   archive.dataset.phase = "entrance";
   setDeckPickerInteractive(false);
+  refreshDeckCarousel3DPreview();
   scheduleSceneViewUpdate();
   focusWhenVisible(approachButton);
 });
@@ -671,6 +780,11 @@ retreatButton.addEventListener("click", () => {
 deckCarouselTrack.addEventListener("click", (event) => {
   const button = event.target.closest(".tabletop-deck[data-deck]");
   if (!button || button.disabled) return;
+  const index = getDeckCarouselSlides().indexOf(button);
+  if (index !== deckCarouselCurrentIndex || deckCarouselMotionActive) {
+    setDeckCarouselCurrent(index, { scroll: true, focus: true, announce: true });
+    return;
+  }
   enterInspection(button.dataset.deck);
 });
 
@@ -687,7 +801,13 @@ deckCarouselTrack.addEventListener("keydown", (event) => {
   if ((event.key === "Enter" || event.key === " ") && focusedSlide && !focusedSlide.disabled) {
     event.preventDefault();
     event.stopPropagation();
-    const currentSlide = getDeckCarouselSlides()[deckCarouselCurrentIndex] ?? focusedSlide;
+    const slides = getDeckCarouselSlides();
+    const focusedIndex = slides.indexOf(focusedSlide);
+    if (focusedIndex !== deckCarouselCurrentIndex || deckCarouselMotionActive) {
+      setDeckCarouselCurrent(focusedIndex, { scroll: true, focus: true, announce: true });
+      return;
+    }
+    const currentSlide = slides[deckCarouselCurrentIndex] ?? focusedSlide;
     enterInspection(currentSlide.dataset.deck);
     return;
   }
@@ -702,15 +822,24 @@ deckCarouselTrack.addEventListener("keydown", (event) => {
   setDeckCarouselCurrent(nextIndex, { scroll: true, focus: true, announce: true });
 });
 
-deckCarouselTrack.addEventListener("scroll", queueDeckCarouselSync, { passive: true });
+deckCarouselTrack.addEventListener("scroll", () => {
+  setDeckCarouselMotionActive(true);
+  queueDeckCarouselSync();
+}, { passive: true });
 deckCarouselTrack.addEventListener("scrollend", () => {
   window.clearTimeout(deckCarouselAnnouncementTimer);
-  syncDeckCarousel({ announce: true, reconcileFocus: true });
+  syncDeckCarousel({ announce: true, reconcileFocus: true, settle: true });
 });
+deckCarouselTrack.addEventListener("pointerdown", () => {
+  deckCarouselScrollTargetIndex = null;
+  deckCarouselScrollTargetStartedAt = 0;
+}, { passive: true });
 deckCarouselTrack.addEventListener("wheel", (event) => {
   if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
   event.preventDefault();
   event.stopPropagation();
+  deckCarouselScrollTargetIndex = null;
+  deckCarouselScrollTargetStartedAt = 0;
   deckCarouselTrack.scrollBy({ left: event.deltaY, behavior: "auto" });
 }, { passive: false });
 
@@ -1238,6 +1367,7 @@ function enterInspection(deckKey, initialMode = "box") {
   woodlandRoot.visible = isBookDeck(deckKey);
   unveiledRoot.visible = deckKey === "unveiled";
   inspectionVisible = true;
+  refreshDeckCarousel3DPreview();
   inspection.inert = false;
   cabinet.inert = true;
   inspection.classList.add("is-visible", "is-summoning");
@@ -1287,6 +1417,7 @@ function leaveInspection() {
   if (browseViewer.open) browseViewer.close();
   controls.autoRotate = false;
   controls.enabled = true;
+  refreshDeckCarousel3DPreview();
 }
 
 
@@ -1740,9 +1871,16 @@ function getDeckTextureUrl(deckKey, name) {
   return url.href;
 }
 
-const staticTextureRequests = Object.entries(DECKS).flatMap(([deckKey, deck]) => (
-  deck.textureFiles.map((name) => [`${deckKey}:${name}`, getDeckTextureUrl(deckKey, name)])
-));
+const staticTextureRequests = Object.entries(DECKS).flatMap(([deckKey, deck]) => {
+  const selectorFaces = Object.values(deck.selector3D?.faces ?? {});
+  const requiredFiles = new Set(deck.textureFiles ?? []);
+  const textureFiles = new Set([...requiredFiles, deck.selectorCover, ...selectorFaces].filter(Boolean));
+  return [...textureFiles].map((name) => ({
+    key: `${deckKey}:${name}`,
+    path: getDeckTextureUrl(deckKey, name),
+    optional: !requiredFiles.has(name),
+  }));
+});
 
 async function loadColorTexture(path, fallbackPath = null) {
   let texture;
@@ -1758,7 +1896,15 @@ async function loadColorTexture(path, fallbackPath = null) {
   return texture;
 }
 
-const staticTextureEntries = await Promise.all(staticTextureRequests.map(async ([key, path]) => [key, await loadColorTexture(path)]));
+const staticTextureEntries = await Promise.all(staticTextureRequests.map(async ({ key, path, optional }) => {
+  try {
+    return [key, await loadColorTexture(path)];
+  } catch (error) {
+    if (!optional) throw error;
+    console.warn(`[arcana] optional carousel texture unavailable; using the deck fallback: ${path}`, error);
+    return [key, null];
+  }
+}));
 const textures = Object.fromEntries(staticTextureEntries);
 
 function createPaperBumpTexture() {
@@ -1806,6 +1952,380 @@ function createMaterial({ map = null, color = 0xffffff, roughness = 0.84, metaln
   managedMaterials.push(material);
   return material;
 }
+
+
+// A single lightweight WebGL stage is moved between carousel items. The
+// centered deck gets the real closed-box model; every other item immediately
+// falls back to its photographed front, so it stays still and faces forward.
+function createDeckCarouselRadialTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext("2d");
+  const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gradient.addColorStop(0, "rgba(255,247,207,1)");
+  gradient.addColorStop(0.13, "rgba(246,213,139,.92)");
+  gradient.addColorStop(0.42, "rgba(115,184,166,.3)");
+  gradient.addColorStop(1, "rgba(0,0,0,0)");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 128, 128);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function getDeckCarouselDimension(value, fallback, { allowZero = false } = {}) {
+  const numericValue = Number(value);
+  const valid = Number.isFinite(numericValue) && (numericValue > 0 || (allowZero && numericValue === 0));
+  return valid ? numericValue : fallback;
+}
+
+function getDeckCarousel3DDefinition(deck) {
+  const bookStyle = deck.model === "book";
+  const configured = deck.selector3D ?? {};
+  const defaultFaces = bookStyle
+    ? {
+        front: "outer-front.jpg",
+        back: "outer-back.jpg",
+        inside: "outer-inside.jpg",
+        left: "outer-left.jpg",
+        right: "outer-right.jpg",
+        top: "outer-top.jpg",
+        bottom: "outer-bottom.jpg",
+      }
+    : {
+        front: deck.selectorCover ?? "front.jpg",
+        back: "back.jpg",
+        left: "left.jpg",
+        right: "right.jpg",
+        top: "top.jpg",
+      };
+  return {
+    bookStyle,
+    width: getDeckCarouselDimension(configured.width, bookStyle ? 1.18 : 1),
+    height: getDeckCarouselDimension(configured.height, bookStyle ? 1.55 : 1.54),
+    depth: getDeckCarouselDimension(configured.depth, bookStyle ? 0.34 : 0.54),
+    coverDepth: getDeckCarouselDimension(configured.coverDepth, bookStyle ? 0.055 : 0, { allowZero: !bookStyle }),
+    edgeColor: configured.edgeColor ?? deck.edgeColor ?? (bookStyle ? "#335853" : "#c7b39f"),
+    faces: { ...defaultFaces, ...(configured.faces ?? {}) },
+  };
+}
+
+function getDeckCarouselTexture(deckKey, file, fallbackFile = null) {
+  if (file && textures[`${deckKey}:${file}`]) return textures[`${deckKey}:${file}`];
+  if (fallbackFile && textures[`${deckKey}:${fallbackFile}`]) return textures[`${deckKey}:${fallbackFile}`];
+  return null;
+}
+
+function createDeckCarouselMaterial(deckKey, file, color, fallbackFile = null) {
+  const map = getDeckCarouselTexture(deckKey, file, fallbackFile);
+  const material = new THREE.MeshPhysicalMaterial({
+    map,
+    color: map ? 0xffffff : color,
+    roughness: map ? 0.58 : 0.8,
+    metalness: 0,
+    clearcoat: map ? 0.32 : 0.12,
+    clearcoatRoughness: 0.48,
+    sheen: map ? 0.2 : 0.08,
+    sheenRoughness: 0.72,
+    sheenColor: new THREE.Color(0xffe7b0),
+    bumpMap: paperBumpTexture,
+    bumpScale: 0.0035,
+  });
+  managedMaterials.push(material);
+  return material;
+}
+
+function addDeckCarouselEdges(mesh, color, edgeMaterials) {
+  const material = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.42,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), material);
+  edges.scale.setScalar(1.004);
+  edges.renderOrder = 3;
+  mesh.add(edges);
+  edgeMaterials.push(material);
+}
+
+function createDeckCarouselPreviewEntry([deckKey, deck], deckIndex, glowTexture) {
+  const definition = getDeckCarousel3DDefinition(deck);
+  const { faces, width, height, depth, coverDepth, edgeColor, bookStyle } = definition;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(28, 1, 0.05, 20);
+  const root = new THREE.Group();
+  root.name = `${deck.header} carousel preview`;
+  root.rotation.order = "YXZ";
+  scene.add(root);
+
+  const edgeMaterials = [];
+  if (bookStyle) {
+    const bodyMaterials = [
+      createDeckCarouselMaterial(deckKey, faces.right, edgeColor),
+      createDeckCarouselMaterial(deckKey, faces.left, edgeColor),
+      createDeckCarouselMaterial(deckKey, faces.top, edgeColor),
+      createDeckCarouselMaterial(deckKey, faces.bottom, edgeColor),
+      createDeckCarouselMaterial(deckKey, faces.inside, edgeColor),
+      createDeckCarouselMaterial(deckKey, faces.back, edgeColor),
+    ];
+    const body = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), bodyMaterials);
+    root.add(body);
+    addDeckCarouselEdges(body, edgeColor, edgeMaterials);
+
+    const coverEdge = createDeckCarouselMaterial(deckKey, null, edgeColor);
+    const coverMaterials = [
+      coverEdge,
+      coverEdge,
+      coverEdge,
+      coverEdge,
+      createDeckCarouselMaterial(deckKey, faces.front, edgeColor, deck.selectorCover),
+      createDeckCarouselMaterial(deckKey, faces.inside, edgeColor),
+    ];
+    const cover = new THREE.Mesh(new THREE.BoxGeometry(width, height, coverDepth), coverMaterials);
+    cover.position.z = depth / 2 + coverDepth / 2 + 0.015;
+    root.add(cover);
+    addDeckCarouselEdges(cover, edgeColor, edgeMaterials);
+  } else {
+    const materials = [
+      createDeckCarouselMaterial(deckKey, faces.right, edgeColor),
+      createDeckCarouselMaterial(deckKey, faces.left, edgeColor),
+      createDeckCarouselMaterial(deckKey, faces.top, edgeColor),
+      createDeckCarouselMaterial(deckKey, faces.bottom, edgeColor),
+      createDeckCarouselMaterial(deckKey, faces.front, edgeColor, deck.selectorCover),
+      createDeckCarouselMaterial(deckKey, faces.back, edgeColor),
+    ];
+    const box = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), materials);
+    root.add(box);
+    addDeckCarouselEdges(box, edgeColor, edgeMaterials);
+  }
+
+  const hemisphereLight = new THREE.HemisphereLight(0xfff0cf, 0x0b1210, 1.25);
+  const keyLight = new THREE.DirectionalLight(0xffe2a4, 3.2);
+  keyLight.position.set(2.8, 3.6, 4.2);
+  const rimLight = new THREE.DirectionalLight(0x72b7a6, 2.45);
+  rimLight.position.set(-3.4, 1.4, -2.6);
+  const glintLight = new THREE.PointLight(0xffd782, 2.4, 7, 2);
+  glintLight.position.set(-1.5, 1.1, 2.4);
+  scene.add(hemisphereLight, keyLight, rimLight, glintLight);
+
+  const glowMaterial = new THREE.SpriteMaterial({
+    map: glowTexture,
+    color: edgeColor,
+    transparent: true,
+    opacity: 0.38,
+    blending: THREE.AdditiveBlending,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const glow = new THREE.Sprite(glowMaterial);
+  glow.position.z = -0.58;
+  glow.scale.set(width * 2.35, height * 1.8, 1);
+  scene.add(glow);
+
+  const sparklePositions = new Float32Array(42 * 3);
+  for (let index = 0; index < 42; index += 1) {
+    const angle = index / 42 * Math.PI * 2 + deckIndex * 0.61;
+    const radius = 0.67 + ((index * 17) % 13) / 28;
+    sparklePositions[index * 3] = Math.cos(angle) * radius * width;
+    sparklePositions[index * 3 + 1] = Math.sin(angle) * radius * height * 0.72;
+    sparklePositions[index * 3 + 2] = 0.18 + ((index * 11) % 9) * 0.045;
+  }
+  const sparkleGeometry = new THREE.BufferGeometry();
+  sparkleGeometry.setAttribute("position", new THREE.BufferAttribute(sparklePositions, 3));
+  const sparkleMaterial = new THREE.PointsMaterial({
+    map: glowTexture,
+    color: 0xffe5a3,
+    size: 0.085,
+    transparent: true,
+    opacity: 0.72,
+    blending: THREE.AdditiveBlending,
+    depthTest: false,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+  const sparkles = new THREE.Points(sparkleGeometry, sparkleMaterial);
+  sparkles.renderOrder = 4;
+  scene.add(sparkles);
+
+  return {
+    deckKey,
+    scene,
+    camera,
+    root,
+    definition,
+    edgeMaterials,
+    glow,
+    glowMaterial,
+    glintLight,
+    sparkles,
+    sparkleMaterial,
+  };
+}
+
+function resetDeckCarousel3DEntry(entry) {
+  if (!entry) return;
+  entry.root.quaternion.identity();
+  entry.root.position.set(0, 0, 0);
+  entry.sparkles.rotation.set(0, 0, 0);
+}
+
+function deactivateDeckCarousel3DPreview() {
+  const slides = getDeckCarouselSlides();
+  if (deckCarousel3DActiveIndex >= 0) {
+    slides[deckCarousel3DActiveIndex]?.classList.remove("is-3d-preview-active");
+    resetDeckCarousel3DEntry(deckCarousel3DEntries[deckCarousel3DActiveIndex]);
+  }
+  deckCarousel3DCanvas?.remove();
+  deckCarousel3DActiveIndex = -1;
+  deckCarousel3DWidth = 0;
+  deckCarousel3DHeight = 0;
+}
+
+function activateDeckCarousel3DPreview(index) {
+  if (!deckCarousel3DReady || !deckCarousel3DCanvas || deckCarousel3DFailedIndices.has(index)) return;
+  if (!deckCarousel3DEntries[index]) {
+    try {
+      deckCarousel3DEntries[index] = createDeckCarouselPreviewEntry(deckEntries[index], index, deckCarousel3DGlowTexture);
+    } catch (error) {
+      deckCarousel3DFailedIndices.add(index);
+      console.warn(`[arcana] 3D preview unavailable for ${deckEntries[index]?.[0] ?? `deck ${index + 1}`}; using its photographed cover.`, error);
+      return;
+    }
+  }
+  const slide = getDeckCarouselSlides()[index];
+  const object = slide?.querySelector(".deck-object");
+  if (!object) return;
+  if (deckCarousel3DActiveIndex === index && deckCarousel3DCanvas.parentElement === object) return;
+  deactivateDeckCarousel3DPreview();
+  resetDeckCarousel3DEntry(deckCarousel3DEntries[index]);
+  object.append(deckCarousel3DCanvas);
+  slide.classList.add("is-3d-preview-active");
+  deckCarousel3DActiveIndex = index;
+  renderDeckCarousel3DPreview(0, performance.now() / 1000);
+}
+
+function refreshDeckCarousel3DPreview() {
+  const canPresent = deckCarousel3DReady
+    && archive.dataset.phase === "choose"
+    && !inspectionVisible
+    && !deckCarouselMotionActive
+    && document.visibilityState === "visible";
+  if (!canPresent) {
+    deactivateDeckCarousel3DPreview();
+    return;
+  }
+  activateDeckCarousel3DPreview(deckCarouselCurrentIndex);
+}
+
+function fitDeckCarousel3DCamera(entry, aspect) {
+  const { width, height, depth, coverDepth } = entry.definition;
+  const verticalFov = THREE.MathUtils.degToRad(entry.camera.fov);
+  const halfVertical = Math.tan(verticalFov / 2);
+  const displayWidth = Math.hypot(width, depth + coverDepth);
+  const distanceForHeight = height / (2 * halfVertical);
+  const distanceForWidth = displayWidth / (2 * halfVertical * Math.max(aspect, 0.2));
+  const distance = Math.max(distanceForHeight, distanceForWidth) * 1.08;
+  entry.camera.position.set(0, 0.015, distance);
+  entry.camera.lookAt(0, 0, 0);
+}
+
+function renderDeckCarousel3DPreview(dt, time) {
+  if (!deckCarousel3DReady || deckCarousel3DActiveIndex < 0 || !deckCarousel3DCanvas?.isConnected) return;
+  const entry = deckCarousel3DEntries[deckCarousel3DActiveIndex];
+  const width = Math.max(1, Math.round(deckCarousel3DCanvas.clientWidth));
+  const height = Math.max(1, Math.round(deckCarousel3DCanvas.clientHeight));
+  if (width !== deckCarousel3DWidth || height !== deckCarousel3DHeight) {
+    deckCarousel3DWidth = width;
+    deckCarousel3DHeight = height;
+    const maximumPixelRatio = window.matchMedia("(max-width: 680px)").matches ? 1.25 : 1.5;
+    deckCarousel3DRenderer.setPixelRatio(Math.min(window.devicePixelRatio, maximumPixelRatio));
+    deckCarousel3DRenderer.setSize(width, height, false);
+    entry.camera.aspect = width / height;
+    entry.camera.updateProjectionMatrix();
+    fitDeckCarousel3DCamera(entry, entry.camera.aspect);
+  }
+
+  if (!deckCarouselReducedMotion.matches) {
+    entry.root.rotation.y = (entry.root.rotation.y + dt * 0.56) % (Math.PI * 2);
+    entry.root.rotation.x = -0.035 + Math.sin(time * 0.72) * 0.025;
+    entry.root.position.y = Math.sin(time * 0.92) * 0.022;
+    entry.sparkles.rotation.z = time * 0.075;
+  } else {
+    entry.root.rotation.set(0, 0, 0);
+    entry.root.position.y = 0;
+    entry.sparkles.rotation.set(0, 0, 0);
+  }
+
+  const reducedMotion = deckCarouselReducedMotion.matches;
+  const shimmer = reducedMotion ? 0.5 : 0.5 + Math.sin(time * 3.1 + deckCarousel3DActiveIndex) * 0.5;
+  if (reducedMotion) {
+    entry.glintLight.position.set(-1.5, 1.1, 2.4);
+  } else {
+    entry.glintLight.position.x = Math.sin(time * 1.35) * 1.85;
+    entry.glintLight.position.y = 0.78 + Math.cos(time * 1.08) * 0.62;
+  }
+  entry.glintLight.intensity = reducedMotion ? 1.6 : 2.1 + shimmer * 1.8;
+  entry.glowMaterial.opacity = reducedMotion ? 0.25 : 0.28 + shimmer * 0.2;
+  entry.sparkleMaterial.opacity = reducedMotion ? 0.22 : 0.42 + shimmer * 0.38;
+  entry.edgeMaterials.forEach((material) => {
+    material.opacity = reducedMotion ? 0.26 : 0.34 + shimmer * 0.3;
+  });
+  const sparkleScale = reducedMotion ? 1 : 0.98 + shimmer * 0.045;
+  entry.sparkles.scale.setScalar(sparkleScale);
+  deckCarousel3DRenderer.render(entry.scene, entry.camera);
+}
+
+function initializeDeckCarousel3D() {
+  try {
+    deckCarousel3DCanvas = document.createElement("canvas");
+    deckCarousel3DCanvas.className = "deck-carousel-3d";
+    deckCarousel3DCanvas.setAttribute("aria-hidden", "true");
+    deckCarousel3DRenderer = new THREE.WebGLRenderer({
+      canvas: deckCarousel3DCanvas,
+      antialias: true,
+      alpha: true,
+      powerPreference: "high-performance",
+    });
+    deckCarousel3DRenderer.outputColorSpace = THREE.SRGBColorSpace;
+    deckCarousel3DRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    deckCarousel3DRenderer.toneMappingExposure = 1.05;
+    deckCarousel3DRenderer.setClearColor(0x000000, 0);
+    deckCarousel3DGlowTexture = createDeckCarouselRadialTexture();
+    deckCarousel3DEntries = new Array(deckEntries.length).fill(null);
+    deckCarousel3DReady = true;
+    deckCarousel.classList.add("has-3d-carousel");
+    deckCarousel3DCanvas.addEventListener("webglcontextlost", (event) => {
+      event.preventDefault();
+      deckCarousel3DReady = false;
+      deckCarousel.classList.remove("has-3d-carousel");
+      deactivateDeckCarousel3DPreview();
+    });
+    deckCarousel3DCanvas.addEventListener("webglcontextrestored", () => {
+      deckCarousel3DReady = true;
+      deckCarousel.classList.add("has-3d-carousel");
+      refreshDeckCarousel3DPreview();
+    });
+    refreshDeckCarousel3DPreview();
+  } catch (error) {
+    deckCarousel3DReady = false;
+    deckCarousel3DRenderer?.dispose();
+    deckCarousel3DCanvas?.remove();
+    deckCarousel3DRenderer = null;
+    deckCarousel3DCanvas = null;
+    console.warn("[arcana] 3D deck carousel unavailable; using photographed covers.", error);
+  }
+}
+
+initializeDeckCarousel3D();
+
+document.addEventListener("visibilitychange", refreshDeckCarousel3DPreview);
+deckCarouselReducedMotion.addEventListener("change", () => {
+  resetDeckCarousel3DEntry(deckCarousel3DEntries[deckCarousel3DActiveIndex]);
+  refreshDeckCarousel3DPreview();
+});
 
 const greenEdge = createMaterial({ color: 0x335853, roughness: 0.95 });
 const goldPaper = createMaterial({ color: 0xa87c40, roughness: 0.9 });
@@ -3213,6 +3733,8 @@ function animate(now) {
   const leftFlicker = 0.84 + Math.sin(time * 7.9) * 0.1 + Math.sin(time * 17.7 + 1.2) * 0.055;
   const rightFlicker = 0.86 + Math.sin(time * 8.7 + 2.4) * 0.095 + Math.sin(time * 19.1) * 0.05;
   candleWash.style.opacity = String(0.38 + (leftFlicker + rightFlicker) * 0.085);
+
+  renderDeckCarousel3DPreview(dt, time);
 
   const shake = updateShake(dt, time);
   camera.position.add(shake);

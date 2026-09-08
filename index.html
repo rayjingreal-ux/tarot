@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#050807" />
     <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
     <title>Arcana Cabinet｜塔羅藏書室</title>
-    <link rel="stylesheet" href="./styles.css?v=20260901-01" />
+    <link rel="stylesheet" href="./styles.css?v=20260908-01" />
     <script type="importmap">
       {
         "imports": {
@@ -49,7 +49,7 @@
         <div class="scene-copy choose-copy" aria-live="polite">
           <p class="kicker">THE CABINET IS LISTENING</p>
           <h2>選擇一副牌</h2>
-          <p>左右滑動或使用方向鍵選取牌盒，再點擊召喚藏品。</p>
+          <p>滑動或用方向鍵選牌；中央牌盒自轉發光，離開即回正，點擊召喚。</p>
           <button id="retreat-button" class="text-button" type="button">← 回到門口</button>
         </div>
 
@@ -57,7 +57,7 @@
           <div class="deck-carousel-meta">
             <span id="deck-carousel-counter">01 / 04</span>
             <b id="deck-carousel-title">THE UNVEILED TAROT</b>
-            <small>左右滑動／方向鍵選取 · 點擊牌盒召喚</small>
+            <small>左右滑動／方向鍵選取 · 中央牌盒自動旋轉</small>
           </div>
           <button id="deck-carousel-previous" class="deck-carousel-arrow is-previous" type="button" aria-controls="deck-carousel-track" aria-label="上一副牌">←</button>
           <div id="deck-carousel-track" class="tabletop-decks" tabindex="0" aria-label="可左右滑動的牌盒選單"></div>
@@ -198,6 +198,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260901-01"></script>
+    <script type="module" src="./app.js?v=20260908-01"></script>
   </body>
 </html>
