@@ -1,5 +1,22 @@
 # Third-party notices
 
+## Lucide hand icon
+
+The inline hand icon in `index.html` comes from [Lucide](https://github.com/lucide-icons/lucide/blob/main/icons/hand.svg), under the [ISC License](https://github.com/lucide-icons/lucide/blob/main/LICENSE).
+
+Copyright (c) 2026 Lucide Icons and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
 ## Three.js
 
 This project includes the browser modules required from Three.js under `vendor/three/`. Three.js is distributed under the MIT License. See `vendor/three/LICENSE` and <https://github.com/mrdoob/three.js>.

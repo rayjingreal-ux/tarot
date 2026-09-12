@@ -1,10 +1,11 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createDrawRitual } from "./draw-ritual.js?v=20260913-01";
+import { createDrawRitual } from "./draw-ritual.js?v=20260913-02";
 import { markDrawRevealed } from "./draw-session.js?v=20260913-01";
-import { createRitualEffects } from "./ritual-effects.js?v=20260913-01";
-import { getRitualCardPose } from "./ritual-layout.js?v=20260913-01";
+import { createRitualEffects } from "./ritual-effects.js?v=20260913-02";
+import { getRitualCardPose } from "./ritual-layout.js?v=20260913-02";
 import { getDrawSpread, getReadingCardPose } from "./draw-spreads.js?v=20260913-01";
+import { createDeckTexturePlan, createDeckTextureCache, getTextureUrl } from "./texture-loading.js?v=20260913-02";
 
 
 const MAJOR_ARCANA = [
@@ -221,6 +222,7 @@ const DEFAULT_DECKS = {
     cardManifest: "./assets/cards-manifest.json",
     textureRoot: "./assets/woodland/textures/",
     textureVersion: "20260814-10",
+    textureVariants: { "guidebook-front.png": "guidebook-front.webp", "guidebook-back.png": "guidebook-back.webp", "card-back.png": "card-back.webp" },
     textureFiles: [
       "outer-front.jpg", "outer-back.jpg", "outer-inside.jpg", "outer-left.jpg", "outer-right.jpg", "outer-top.jpg", "outer-bottom.jpg",
       "inner-front.jpg", "inner-back.jpg", "inner-front-upright.jpg", "inner-back-upright.jpg", "inner-left.jpg", "inner-right.jpg", "inner-top.jpg", "inner-bottom.jpg",
@@ -256,6 +258,7 @@ const DEFAULT_DECKS = {
     workbench: "./redvisions-workbench/",
     textureRoot: "./assets/redvisions/textures/",
     textureVersion: "20260825-01",
+    textureVariants: { "guidebook-front.png": "guidebook-front.webp", "guidebook-back.png": "guidebook-back.webp", "card-back.png": "card-back.webp" },
     textureFiles: [
       "outer-front.jpg", "outer-back.jpg", "outer-inside.jpg", "outer-left.jpg", "outer-right.jpg", "outer-top.jpg", "outer-bottom.jpg",
       "inner-front.jpg", "inner-back.jpg", "inner-front-upright.jpg", "inner-back-upright.jpg", "inner-left.jpg", "inner-right.jpg", "inner-top.jpg", "inner-bottom.jpg",
@@ -297,6 +300,7 @@ const DEFAULT_DECKS = {
     workbench: "./prosepoem-workbench/",
     textureRoot: "./assets/prosepoem/textures/",
     textureVersion: "20260831-01",
+    textureVariants: { "guidebook-front.png": "guidebook-front.webp", "guidebook-back.png": "guidebook-back.webp" },
     textureFiles: [
       "outer-front.jpg", "outer-back.jpg", "outer-inside.jpg", "outer-left.jpg", "outer-right.jpg", "outer-top.jpg", "outer-bottom.jpg",
       "inner-front.jpg", "inner-back.jpg", "inner-front-upright.jpg", "inner-back-upright.jpg", "inner-left.jpg", "inner-right.jpg", "inner-top.jpg", "inner-bottom.jpg",
@@ -446,6 +450,7 @@ let deckCarousel3DActiveIndex = -1;
 let deckCarousel3DWidth = 0;
 let deckCarousel3DHeight = 0;
 let inspectionVisible = false;
+let artifactStageReady = false;
 let inspectionReturnFocus = null;
 let feedbackResetTimer = null;
 
@@ -505,8 +510,8 @@ function updateDeckWorkbench(deckKey) {
   deckWorkbenchLink.dataset.browseDeck = deckKey;
   if (deck.hasCards) {
     deckWorkbenchLink.href = `./?deck=${encodeURIComponent(deckKey)}&mode=browse`;
-    deckWorkbenchLink.removeAttribute("aria-disabled");
-    deckWorkbenchLink.tabIndex = 0;
+    deckWorkbenchLink.setAttribute("aria-disabled", String(!artifactStageReady));
+    deckWorkbenchLink.tabIndex = artifactStageReady ? 0 : -1;
     deckWorkbenchLink.setAttribute("aria-label", `一般瀏覽 ${deck.header}`);
   } else {
     deckWorkbenchLink.removeAttribute("href");
@@ -575,6 +580,7 @@ function setDeckCarouselCurrent(index, { scroll = false, focus = false, announce
   const slides = getDeckCarouselSlides();
   if (!slides.length) return;
   const nextIndex = Math.max(0, Math.min(index, slides.length - 1));
+  if (nextIndex !== deckCarouselCurrentIndex) cancelPendingInspection();
   deckCarouselCurrentIndex = nextIndex;
   slides.forEach((slide, slideIndex) => {
     const current = slideIndex === nextIndex;
@@ -687,6 +693,8 @@ let selectedCard = 0;
 let selectedFlipped = false;
 let drawRitual = null;
 let readingResult = null;
+let pendingInspection = null;
+let inspectionEntryGeneration = 0;
 let revealingResult = null;
 let drawRestoreState = null;
 const ritualMotion = { energy: 0, clock: 0, focus: 0, hover: -1 };
@@ -777,6 +785,7 @@ approachButton.addEventListener("click", () => {
 });
 
 retreatButton.addEventListener("click", () => {
+  cancelPendingInspection();
   archive.dataset.phase = "entrance";
   setDeckPickerInteractive(false);
   refreshDeckCarousel3DPreview();
@@ -838,10 +847,12 @@ deckCarouselTrack.addEventListener("scrollend", () => {
   syncDeckCarousel({ announce: true, reconcileFocus: true, settle: true });
 });
 deckCarouselTrack.addEventListener("pointerdown", () => {
+  cancelPendingInspection();
   deckCarouselScrollTargetIndex = null;
   deckCarouselScrollTargetStartedAt = 0;
 }, { passive: true });
 deckCarouselTrack.addEventListener("wheel", (event) => {
+  cancelPendingInspection();
   if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
   event.preventDefault();
   event.stopPropagation();
@@ -932,6 +943,11 @@ browseViewer.addEventListener("click", (event) => {
 });
 
 window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && pendingInspection) {
+    event.preventDefault();
+    cancelPendingInspection();
+    return;
+  }
   if (!inspectionVisible) return;
   if (event.defaultPrevented) return;
   if (drawRitual?.isOpen) {
@@ -1373,13 +1389,45 @@ function resetWoodlandInteraction() {
 }
 
 
-function enterInspection(deckKey, initialMode = "box") {
-  if (!DECKS[deckKey]) return;
+function cancelPendingInspection() {
+  inspectionEntryGeneration += 1;
+  pendingInspection = null;
+  const feedback = document.querySelector("#deck-load-feedback");
+  if (feedback) feedback.hidden = true;
+  getDeckCarouselSlides().forEach((slide) => { slide.setAttribute("aria-busy", "false"); });
+}
+
+async function enterInspection(deckKey, initialMode = "box") {
+  if (!artifactStageReady || !DECKS[deckKey]) return;
+  initialMode = initialMode === "browse" ? "browse" : "box";
+  if (pendingInspection?.deckKey === deckKey && pendingInspection.initialMode === initialMode) return;
+  cancelPendingInspection();
+  const token = inspectionEntryGeneration;
+  const currentFocus = document.activeElement;
+  const slide = getDeckCarouselSlides().find((item) => item.dataset.deck === deckKey);
+  const feedback = document.querySelector("#deck-load-feedback");
+  pendingInspection = { token, deckKey, initialMode };
+  slide?.setAttribute("aria-busy", "true");
+  feedback.textContent = "正在準備這副牌盒…　Esc 可取消";
+  feedback.hidden = false;
+  try {
+    await deckTextureCache.ensureDeck(deckKey);
+  } catch (error) {
+    if (token !== inspectionEntryGeneration) return;
+    pendingInspection = null;
+    slide?.setAttribute("aria-busy", "false");
+    feedback.textContent = "這副牌盒暫時無法載入，請再點牌盒重試。";
+    console.warn(`[arcana] unable to prepare ${deckKey}`, error);
+    return;
+  }
+  if (token !== inspectionEntryGeneration || archive.dataset.phase !== "choose") return;
+  pendingInspection = null;
+  slide?.setAttribute("aria-busy", "false");
+  feedback.hidden = true;
   drawRitual?.cancel({ restore: false });
   readingResult = null;
   drawRestoreState = null;
   updateReadingResult();
-  const currentFocus = document.activeElement;
   inspectionReturnFocus = currentFocus instanceof HTMLElement && cabinet.contains(currentFocus)
     ? currentFocus
     : getDeckCarouselSlides()[deckCarouselCurrentIndex] ?? approachButton;
@@ -1390,6 +1438,8 @@ function enterInspection(deckKey, initialMode = "box") {
     applyBookDeckAppearance(deckKey);
     cardsModeTab.disabled = true;
     cardsModeTab.title = `依序單擊說明書與${packageLabel(deckKey)}後開啟`;
+  } else if (deckKey === "unveiled") {
+    applyUnveiledDeckAppearance();
   }
   woodlandRoot.visible = isBookDeck(deckKey);
   unveiledRoot.visible = deckKey === "unveiled";
@@ -1401,6 +1451,12 @@ function enterInspection(deckKey, initialMode = "box") {
   inspection.setAttribute("aria-hidden", "false");
   invokeAge = 0;
   resetWoodlandInteraction();
+  // Hidden stages no longer animate in the background; enter from a closed pose.
+  woodlandOpenCurrent = 0;
+  unveiledOpenCurrent = 0;
+  innerBoxExtractedCurrent = 0;
+  woodlandHinge.rotation.y = 0;
+  unveiledDrawer.position.set(0, 0, 0);
   if (DECKS[deckKey].hasCards) {
     void ensureDeckCardExperience(deckKey).then((cards) => {
       if (activeDeckKey !== deckKey) return;
@@ -1418,11 +1474,14 @@ function enterInspection(deckKey, initialMode = "box") {
   triggerMysticEffect(0.42);
   playInvocationSound();
   focusWhenVisible(() => inspectionVisible ? closeInspectionButton : null);
-  window.setTimeout(() => inspection.classList.remove("is-summoning"), 1900);
+  window.setTimeout(() => {
+    if (token === inspectionEntryGeneration) inspection.classList.remove("is-summoning");
+  }, 1900);
 }
 
 
 function leaveInspection() {
+  cancelPendingInspection();
   drawRitual?.cancel({ restore: false });
   readingResult = null;
   drawRestoreState = null;
@@ -1656,7 +1715,7 @@ function selectCard(index, effect = true) {
     playCardSlide(rawDirection === 0 ? 0 : Math.sign(rawDirection));
   }
   if (readingResult) void ensureCardTexture(selectedCard);
-  else requestCardTextureWindow(selectedCard);
+  else if (!drawRitual?.isOpen) requestCardTextureWindow(selectedCard);
 }
 
 function readingEntries(result = readingResult) {
@@ -1725,8 +1784,7 @@ function updateReadingResult() {
   if (!readingResult) return;
   const { session } = readingResult;
   const spread = getDrawSpread(session.spreadId);
-  document.querySelector("#reading-question").textContent = session.question || "這一刻，留在心裡的問題";
-  document.querySelector("#reading-method").textContent = `${session.method === "starlight" ? "星光選牌" : "手動選牌"} · ${spread.name}`;
+  document.querySelector("#reading-method").textContent = `${session.method === "starlight" ? "迎接命運" : "手動選牌"} · ${spread.name}`;
   document.querySelector("#reading-result-status").textContent = `主牌已揭曉 ${session.draws.filter((entry) => entry.revealed).length} / ${session.drawCount} · 切牌${session.cut?.revealed ? "已揭曉" : "待翻開"}`;
   document.querySelector("#spread-result-title").textContent = spread.name;
   document.querySelector("#spread-result-summary").textContent = `${session.drawCount} 張主牌 ＋ 1 張切牌 · 點牌翻開，選牌位可放大`;
@@ -2188,22 +2246,10 @@ pooledLights.forEach((entry) => scene.add(entry.light));
 const textureLoader = new THREE.TextureLoader();
 
 function getDeckTextureUrl(deckKey, name) {
-  const deck = DECKS[deckKey];
-  const url = new URL(name, deck.textureRoot);
-  if (deck.textureVersion) url.searchParams.set("v", deck.textureVersion);
-  return url.href;
+  return getTextureUrl(DECKS[deckKey], name);
 }
 
-const staticTextureRequests = Object.entries(DECKS).flatMap(([deckKey, deck]) => {
-  const selectorFaces = Object.values(deck.selector3D?.faces ?? {});
-  const requiredFiles = new Set(deck.textureFiles ?? []);
-  const textureFiles = new Set([...requiredFiles, deck.selectorCover, ...selectorFaces].filter(Boolean));
-  return [...textureFiles].map((name) => ({
-    key: `${deckKey}:${name}`,
-    path: getDeckTextureUrl(deckKey, name),
-    optional: !requiredFiles.has(name),
-  }));
-});
+const staticTextureRequests = createDeckTexturePlan(DECKS);
 
 async function loadColorTexture(path, fallbackPath = null) {
   let texture;
@@ -2219,16 +2265,12 @@ async function loadColorTexture(path, fallbackPath = null) {
   return texture;
 }
 
-const staticTextureEntries = await Promise.all(staticTextureRequests.map(async ({ key, path, optional }) => {
-  try {
-    return [key, await loadColorTexture(path)];
-  } catch (error) {
-    if (!optional) throw error;
-    console.warn(`[arcana] optional carousel texture unavailable; using the deck fallback: ${path}`, error);
-    return [key, null];
-  }
-}));
-const textures = Object.fromEntries(staticTextureEntries);
+const deckTextureCache = createDeckTextureCache(staticTextureRequests, loadColorTexture);
+const textures = deckTextureCache.textures;
+const previewTextureResults = await deckTextureCache.preloadPreviews();
+if (previewTextureResults.some((result) => result.status === "rejected")) {
+  console.warn("[arcana] Some box previews are unavailable; selecting that deck retries its materials.");
+}
 
 function createPaperBumpTexture() {
   const canvas = document.createElement("canvas");
@@ -2355,6 +2397,7 @@ function createDeckCarouselMaterial(deckKey, file, color, fallbackFile = null) {
     bumpMap: paperBumpTexture,
     bumpScale: 0.0035,
   });
+  material.userData.deckTextureBinding = { deckKey, file, fallbackFile };
   managedMaterials.push(material);
   return material;
 }
@@ -2521,6 +2564,22 @@ function activateDeckCarousel3DPreview(index) {
   const slide = getDeckCarouselSlides()[index];
   const object = slide?.querySelector(".deck-object");
   if (!object) return;
+  // A failed outer-face load can succeed when the selected deck is retried.
+  // Repair its existing preview materials without recreating shared GPU textures.
+  deckCarousel3DEntries[index].root.traverse((mesh) => {
+    for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      const binding = material?.userData.deckTextureBinding;
+      if (!binding) continue;
+      const map = getDeckCarouselTexture(binding.deckKey, binding.file, binding.fallbackFile);
+      if (!map || material.map === map) continue;
+      material.map = map;
+      material.color.set(0xffffff);
+      material.roughness = 0.58;
+      material.clearcoat = 0.32;
+      material.sheen = 0.2;
+      material.needsUpdate = true;
+    }
+  });
   if (deckCarousel3DActiveIndex === index && deckCarousel3DCanvas.parentElement === object) return;
   deactivateDeckCarousel3DPreview();
   resetDeckCarousel3DEntry(deckCarousel3DEntries[index]);
@@ -2892,6 +2951,16 @@ const drawerMaterials = [neutralPaper, neutralPaper, neutralPaper, neutralPaper,
 const drawerMesh = new THREE.Mesh(new THREE.BoxGeometry(0.92, 1.43, 0.48), drawerMaterials);
 drawerMesh.castShadow = true;
 unveiledDrawer.add(drawerMesh);
+
+function applyUnveiledDeckAppearance() {
+  ["right.jpg", "left.jpg", "top.jpg", null, "front.jpg", "back.jpg"].forEach((file, index) => {
+    if (!file) return;
+    unveiledMaterials[index].map = textures[`unveiled:${file}`];
+    unveiledMaterials[index].needsUpdate = true;
+  });
+  drawerMaterials[4].map = textures["unveiled:drawer.jpg"];
+  drawerMaterials[4].needsUpdate = true;
+}
 
 for (let index = 0; index < 8; index += 1) {
   const layer = new THREE.Mesh(new THREE.BoxGeometry(0.79, 1.15, 0.006), index % 2 ? neutralPaper : darkPaper);
@@ -3963,7 +4032,7 @@ function updateRitualCards(dt, time) {
   ritualMotion.focus = THREE.MathUtils.damp(ritualMotion.focus, state.focus, 9, dt);
   Object.assign(ritualPoseOptions, {
     phase: state.phase === "cutting" ? "selecting" : state.phase, count: session.order.length, time: ritualMotion.clock,
-    energy: ritualMotion.energy, progress: (performance.now() - state.phaseStartedAt) / 1150,
+    energy: ritualMotion.energy, progress: state.phase === "shuffling" ? state.progress : (performance.now() - state.phaseStartedAt) / 1150,
     focus: ritualMotion.focus, selectedPosition: state.selectedPosition, aspect: camera.aspect,
     reducedMotion: deckCarouselReducedMotion.matches,
   });
@@ -4171,6 +4240,12 @@ function animate(now) {
   const dt = Math.min((now - lastFrameTime) / 1000, 0.05);
   lastFrameTime = now;
   const time = now / 1000;
+  if (document.hidden) return;
+  const leftFlicker = 0.84 + Math.sin(time * 7.9) * 0.1 + Math.sin(time * 17.7 + 1.2) * 0.055;
+  const rightFlicker = 0.86 + Math.sin(time * 8.7 + 2.4) * 0.095 + Math.sin(time * 19.1) * 0.05;
+  candleWash.style.opacity = String(0.38 + (leftFlicker + rightFlicker) * 0.085);
+  renderDeckCarousel3DPreview(dt, time);
+  if (!inspectionVisible) return;
 
   const coverTarget = woodlandOpenTarget > 0.5 || guidebookExtractedCurrent > 0.03 || innerBoxExtractedCurrent > 0.03 ? 1 : 0;
   woodlandOpenCurrent = moveAtOneSecond(woodlandOpenCurrent, coverTarget, dt);
@@ -4252,14 +4327,6 @@ function animate(now) {
   particleGeometry.attributes.position.needsUpdate = true;
   particles.rotation.y += dt * 0.018;
 
-  // Only the two candles already present in the photograph drive the ambient
-  // light wash. There are no additional flame sprites or floating lights.
-  const leftFlicker = 0.84 + Math.sin(time * 7.9) * 0.1 + Math.sin(time * 17.7 + 1.2) * 0.055;
-  const rightFlicker = 0.86 + Math.sin(time * 8.7 + 2.4) * 0.095 + Math.sin(time * 19.1) * 0.05;
-  candleWash.style.opacity = String(0.38 + (leftFlicker + rightFlicker) * 0.085);
-
-  renderDeckCarousel3DPreview(dt, time);
-
   const shake = updateShake(dt, time);
   camera.position.add(shake);
   controls.update();
@@ -4291,12 +4358,15 @@ cardsGroup.visible = false;
 setBoxOpen(0);
 
 initializeDrawRitual();
+artifactStageReady = true;
+updateDeckWorkbench(deckEntries[deckCarouselCurrentIndex][0]);
 
 const requestedParameters = new URLSearchParams(window.location.search);
 const requestedDeck = requestedParameters.get("deck");
 const requestedMode = requestedParameters.get("mode");
 if (DECKS[requestedDeck]) {
   archive.dataset.phase = "choose";
+  setDeckPickerInteractive(true);
   const requestedDeckIndex = deckEntries.findIndex(([deckKey]) => deckKey === requestedDeck);
   if (requestedDeckIndex >= 0) setDeckCarouselCurrent(requestedDeckIndex, { scroll: true });
   enterInspection(requestedDeck, requestedMode);

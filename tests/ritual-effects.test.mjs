@@ -15,7 +15,7 @@ assert.equal(effectSource.match(bareImportPattern)?.length, 1, "Expected one bar
 const runnableSource = effectSource.replace(
   bareImportPattern,
   `import * as THREE from ${JSON.stringify(THREE_URL)};`,
-);
+).replace('"./ritual-layout.js?v=20260913-02"', JSON.stringify(pathToFileURL(resolve(ROOT, "ritual-layout.js")).href));
 const effectModuleUrl = `data:text/javascript;base64,${Buffer.from(runnableSource).toString("base64")}`;
 const { createRitualEffects } = await import(effectModuleUrl);
 

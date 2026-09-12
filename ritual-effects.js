@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { getShuffleEnvelope } from "./ritual-layout.js?v=20260913-02";
 
 const PHASES = new Set(["idle", "setup", "shuffling", "selecting", "revealing"]);
 const TAU = Math.PI * 2;
@@ -378,6 +379,7 @@ export function createRitualEffects(scene, { reducedMotion = false } = {}) {
 
   function updateParticles(dt, revealBloom) {
     const progress = state.progress;
+    const wave = getShuffleEnvelope(progress);
     let movementRate = state.phase === "shuffling" ? 4 + energy * 7 : 3.5;
     if (state.phase === "revealing") movementRate = 7;
     if (isReduced) movementRate = 0;
@@ -405,12 +407,11 @@ export function createRitualEffects(scene, { reducedMotion = false } = {}) {
         targetY = heightSeed * 0.72 + Math.sin(motionClock * 12.8 + phase) * 0.025;
         targetZ = depthSeed * 0.43 - 0.05;
       } else if (state.phase === "shuffling") {
-        const gather = 1 - progress * 0.34;
-        const angle = baseAngle + motionClock * speed + progress * 1.15;
-        const radius = (0.25 + radiusSeed * 2.05) * gather;
+        const angle = baseAngle + (motionClock * speed + progress * 1.15) * (1 - wave.burst);
+        const radius = (0.25 + radiusSeed * 2.05) * wave.radius;
         targetX = Math.cos(angle) * radius;
-        targetY = Math.sin(angle * 1.18 + phase) * (0.18 + radiusSeed * 0.52) + heightSeed * 0.1;
-        targetZ = depthSeed * 0.32 + Math.sin(angle * 1.9 + phase) * 0.1;
+        targetY = (Math.sin(angle * 1.18 + phase) * (0.18 + radiusSeed * 0.52) + heightSeed * 0.1) * wave.radius;
+        targetZ = (depthSeed * 0.32 + Math.sin(angle * 1.9 + phase) * 0.1) * wave.radius;
       } else if (state.phase === "selecting") {
         const angle = baseAngle + motionClock * speed;
         const radius = 0.36 + radiusSeed * 1.9;
@@ -449,6 +450,12 @@ export function createRitualEffects(scene, { reducedMotion = false } = {}) {
         tailRadius = Math.min(2.08, headRadius + 0.18);
         headAngle = seedAngle;
         tailAngle = seedAngle - 0.035;
+      } else if (state.phase === "shuffling" && progress >= 0.77) {
+        const wave = getShuffleEnvelope(progress);
+        headRadius = 0.18 + wave.burst * 2.05;
+        tailRadius = Math.max(0.08, headRadius - 0.3);
+        headAngle = seedAngle;
+        tailAngle = seedAngle;
       } else if (state.phase === "revealing") {
         const staggered = clamp01(progress * 1.22 - trailPhases[index] * 0.2);
         headRadius = 0.22 + staggered * 2.05;
@@ -481,8 +488,9 @@ export function createRitualEffects(scene, { reducedMotion = false } = {}) {
       let width = 1.55 + index * 0.18;
       let height = 0.62 + index * 0.055;
       if (!isReduced && state.phase === "shuffling") {
-        width *= 1 - progress * 0.12;
-        height *= 1 - progress * 0.08;
+        const radius = Math.max(0.18, getShuffleEnvelope(progress).radius);
+        width *= radius;
+        height *= radius;
       } else if (!isReduced && state.phase === "revealing") {
         width *= 0.72 + progress * 0.55;
         height *= 0.72 + progress * 0.55;
@@ -506,9 +514,9 @@ export function createRitualEffects(scene, { reducedMotion = false } = {}) {
         scale = 1.55 + index * 0.24;
         opacity = arcOpacity * (state.phase === "revealing" ? revealBloom * 0.16 : 0.09);
       } else if (state.phase === "shuffling") {
-        const cycle = (motionClock * 0.5 + pulse.delay + progress * 0.22) % 1;
-        scale = 2.4 - cycle * 1.7;
-        opacity = Math.sin(cycle * Math.PI) * arcOpacity * (state.holding ? 0.72 : 0.34);
+        const wave = getShuffleEnvelope(progress);
+        scale = (1.6 + pulse.delay) * wave.radius;
+        opacity = (0.16 + Math.sin(wave.burst * Math.PI) * 0.6) * arcOpacity;
       } else if (state.phase === "revealing") {
         const local = clamp01(progress * 1.25 - pulse.delay * 0.38);
         scale = 0.35 + smoothstep(local) * 2.2;

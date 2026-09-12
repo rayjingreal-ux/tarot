@@ -81,6 +81,11 @@
       "cardManifest": "./cards-manifest.json",
       "textureRoot": "./woodland/textures/",
       "textureVersion": "20260814-10",
+      "textureVariants": {
+        "guidebook-front.png": "guidebook-front.webp",
+        "guidebook-back.png": "guidebook-back.webp",
+        "card-back.png": "card-back.webp"
+      },
       "textureFiles": [
         "outer-front.jpg",
         "outer-back.jpg",
@@ -140,6 +145,11 @@
       "workbench": "../redvisions-workbench/",
       "textureRoot": "./redvisions/textures/",
       "textureVersion": "20260825-01",
+      "textureVariants": {
+        "guidebook-front.png": "guidebook-front.webp",
+        "guidebook-back.png": "guidebook-back.webp",
+        "card-back.png": "card-back.webp"
+      },
       "textureFiles": [
         "outer-front.jpg",
         "outer-back.jpg",
@@ -205,6 +215,10 @@
       "workbench": "../prosepoem-workbench/",
       "textureRoot": "./prosepoem/textures/",
       "textureVersion": "20260831-01",
+      "textureVariants": {
+        "guidebook-front.png": "guidebook-front.webp",
+        "guidebook-back.png": "guidebook-back.webp"
+      },
       "textureFiles": [
         "outer-front.jpg",
         "outer-back.jpg",

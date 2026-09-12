@@ -21,6 +21,7 @@ function harness(t, { method = "manual", prepareSelection = async () => {} } = {
     removeAttribute(name) { delete this[name]; }
     focus() { document.activeElement = this; }
     closest() { return null; }
+    setPointerCapture() {}
     addEventListener(name, handler) {
       if (!this.listeners.has(name)) this.listeners.set(name, []);
       this.listeners.get(name).push(handler);
@@ -50,31 +51,38 @@ function harness(t, { method = "manual", prepareSelection = async () => {} } = {
   const saved = Object.fromEntries(Object.keys(globals).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   t.after(() => { for (const [key, descriptor] of Object.entries(saved)) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; } });
-  get("draw-ritual").hidden = true; get("draw-spread").value = "single";
-  const commits = [], preparations = []; let cancelled = 0;
+  get("draw-ritual").hidden = true;
+  const commits = [], preparations = [], orders = []; let cancelled = 0;
   const controller = createDrawRitual({
     getContext: () => ({ deckKey: "test", name: "Test deck", backUrl: "back.webp" }), onOpen() {},
     loadDeck: async () => Array.from({ length: 78 }, (_, index) => ({ id: `card-${index}` })),
     startAnimation() {}, cancelAnimation() { cancelled++; }, focusResult() {}, focusChoices() {},
+    orderChanged(session) { orders.push(session.order.slice()); },
     prepareSelection: async (indices, session) => { preparations.push({ indices, session }); await prepareSelection(indices, session); },
     commitSelection: (index, session) => commits.push({ index, session }),
   });
   async function settle() { for (let i = 0; i < 12; i++) await Promise.resolve(); }
   function advance(milliseconds) { now += milliseconds; const queued = [...frames.values()]; frames.clear(); queued.forEach((callback) => callback(now)); }
-  async function start(spread = "free-3") {
-    controller.open(); get("draw-spread").value = spread; get("draw-start").fire("click"); await settle();
+  async function begin(spread = "free-3") {
+    controller.open();
+    get("draw-spread-options").children.find((button) => button.dataset.spread === spread).fire("click");
+    get(method === "manual" ? "draw-start" : "draw-fate").fire("click"); await settle();
     controller.animationComplete();
-    if (method === "manual") get("draw-hold").fire("click");
-    advance(2500);
-    if (method === "manual") get("draw-collect").fire("click");
-    assert.equal(controller.session.phase, "cutting");
   }
-  return { controller, get, commits, preparations, start, settle, advance, get cancelled() { return cancelled; } };
+  async function start(spread = "free-3", cut = true) {
+    await begin(spread);
+    if (method === "manual") get("draw-hold").fire("click");
+    advance(4500);
+    assert.equal(controller.session.phase, "shuffling", "completion waits for explicit cutting");
+    if (cut) get("draw-collect").fire("click");
+    assert.equal(controller.session.phase, cut ? "cutting" : "shuffling");
+  }
+  return { controller, get, commits, preparations, orders, begin, start, settle, advance, get cancelled() { return cancelled; } };
 }
 
 test("controller completes all fourteen layouts only after cut plus the selected count", async (t) => {
   const h = harness(t);
-  assert.equal(h.get("draw-spread").children.length, 14);
+  assert.equal(h.get("draw-spread-options").children.length, 14);
   for (const spread of DRAW_SPREADS) {
     await h.start(spread.id);
     assert.equal(h.controller.session.draws.length, 0);
@@ -126,4 +134,65 @@ test("cancel during preparation prevents stale delivery and supports a fresh rou
   assert.equal(h.commits.length, 0); assert.equal(h.cancelled, 1); assert.equal(h.controller.session, null);
   await h.start("free-2"); assert.equal(h.controller.session.cut, null); assert.equal(h.controller.session.draws.length, 0);
   h.controller.cancel();
+});
+
+test("light hand repeats complete cycles with a fresh random order, and never cuts automatically", async (t) => {
+  const h = harness(t); await h.start("free-7", false);
+  let previous = h.controller.session;
+  for (let cycle = 0; cycle < 4; cycle++) {
+    assert.equal(h.get("draw-hold").disabled, false);
+    assert.equal(h.get("draw-collect").hidden, false);
+    h.get("draw-hold").fire("click");
+    assert.notEqual(h.controller.session, previous);
+    assert.notDeepEqual(h.controller.session.order, previous.order);
+    assert.equal(h.controller.session.spreadId, "free-7");
+    assert.equal(h.controller.session.cut, null);
+    assert.deepEqual(h.controller.session.draws, []);
+    assert.equal(h.get("draw-collect").hidden, true);
+    h.get("draw-collect").fire("click");
+    assert.equal(h.controller.session.phase, "shuffling", "cannot cut partway through a repeat");
+    h.advance(4500);
+    assert.equal(h.controller.visual.progress, 1);
+    assert.equal(h.controller.session.phase, "shuffling");
+    previous = h.controller.session;
+  }
+  assert.equal(h.orders.length, 4);
+  h.get("draw-collect").fire("click");
+  assert.equal(h.controller.session.phase, "cutting");
+  h.get("draw-hold").fire("click");
+  assert.equal(h.controller.session, previous, "hidden hand cannot alter the cutting round");
+});
+
+test("releasing a completed hold does not replay; a new pointer click does", async (t) => {
+  const h = harness(t); await h.begin();
+  const hand = h.get("draw-hold");
+  hand.fire("pointerdown", { button: 0, pointerId: 1 });
+  h.advance(1000); hand.fire("pointerup");
+  const paused = h.controller.visual.progress;
+  h.advance(2000); assert.equal(h.controller.visual.progress, paused);
+  hand.fire("pointerdown", { button: 0, pointerId: 2 });
+  h.advance(3500); const completed = h.controller.session;
+  hand.fire("pointerup"); hand.fire("click", { detail: 1 });
+  assert.equal(h.controller.session, completed);
+  hand.fire("pointerdown", { button: 0, pointerId: 3 });
+  hand.fire("pointerup"); hand.fire("click", { detail: 1 });
+  assert.notEqual(h.controller.session, completed);
+  h.advance(4500); assert.equal(h.controller.visual.progress, 1);
+});
+
+test("fate can also repeat and suspends timed progress when the document is hidden", async (t) => {
+  const h = harness(t, { method: "starlight" }); await h.begin("single");
+  h.advance(1000);
+  document.hidden = true; document.fire("visibilitychange");
+  const progress = h.controller.visual.progress;
+  h.advance(20000); assert.equal(h.controller.visual.progress, progress);
+  document.hidden = false; document.fire("visibilitychange");
+  h.advance(3500); assert.equal(h.controller.visual.progress, 1);
+  assert.equal(h.get("draw-hold").hidden, false);
+  const before = h.controller.session;
+  h.get("draw-hold").fire("click"); h.advance(4500);
+  assert.notEqual(h.controller.session, before);
+  assert.equal(h.controller.session.cut, null);
+  h.get("draw-collect").fire("click"); h.controller.choose(8); await h.settle();
+  assert.equal(h.commits.length, 1); assert.equal(h.commits[0].session.draws.length, 1);
 });

@@ -7,7 +7,6 @@ export function createDrawRitual(adapter) {
   const find = (id) => surface.querySelector(`#${id}`);
   const title = find("draw-ritual-title");
   const status = find("draw-ritual-status");
-  const question = find("draw-question");
   const track = find("draw-card-track");
   const hold = find("draw-hold");
   const collect = find("draw-collect");
@@ -16,37 +15,52 @@ export function createDrawRitual(adapter) {
   const error = find("draw-error");
   const retry = find("draw-retry");
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-  const spreadSelect = find("draw-spread");
+  const spreadOptions = find("draw-spread-options");
+  let selectedSpreadId = "single";
   DRAW_SPREADS.forEach((spread) => {
-    const option = document.createElement("option");
-    option.value = spread.id;
-    option.textContent = `${spread.name} · ${spread.count} 張`;
-    spreadSelect.append(option);
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "draw-spread-option";
+    option.dataset.spread = spread.id;
+    option.setAttribute("aria-label", `${spread.name}，${spread.count} 張主牌，另加一張切牌`);
+    const diagram = document.createElement("span");
+    diagram.className = "draw-spread-diagram";
+    diagram.setAttribute("aria-hidden", "true");
+    const xs = spread.slots.map((slot) => slot.x), ys = spread.slots.map((slot) => slot.y);
+    const width = Math.max(...xs) - Math.min(...xs) + 1, height = Math.max(...ys) - Math.min(...ys) + 1;
+    spread.slots.forEach((slot) => {
+      const card = document.createElement("i");
+      card.style.left = `${(slot.x - Math.min(...xs) + 0.5) / width * 100}%`;
+      card.style.top = `${(slot.y - Math.min(...ys) + 0.5) / height * 100}%`;
+      diagram.append(card);
+    });
+    const name = document.createElement("strong"); name.textContent = spread.name;
+    const count = document.createElement("small"); count.textContent = `${spread.count} 張主牌`;
+    option.append(diagram, name, count);
+    option.addEventListener("click", () => {
+      if (pending || visual.phase !== "setup") return;
+      selectedSpreadId = spread.id;
+      updateSpreadPreview();
+    });
+    spreadOptions.append(option);
   });
   function updateSpreadPreview() {
-    const layout = getDrawSpread(spreadSelect.value);
-    find("draw-spread-description").textContent = `${layout.count} 張主牌 ＋ 1 張切牌 · ${layout.description}`;
-    const preview = find("draw-spread-preview");
-    preview.replaceChildren();
-    const xs = layout.slots.map((slot) => slot.x), ys = layout.slots.map((slot) => slot.y);
-    const width = Math.max(...xs) - Math.min(...xs) + 1, height = Math.max(...ys) - Math.min(...ys) + 1;
-    layout.slots.forEach((slot, index) => {
-      const item = document.createElement("span");
-      item.textContent = String(index + 1);
-      item.style.left = `${(slot.x - Math.min(...xs) + 0.5) / width * 100}%`;
-      item.style.top = `${(slot.y - Math.min(...ys) + 0.5) / height * 100}%`;
-      preview.append(item);
+    const layout = getDrawSpread(selectedSpreadId);
+    find("draw-spread-description").textContent = `${layout.name} · ${layout.count} 張主牌 ＋ 1 張切牌`;
+    [...spreadOptions.children].forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.spread === selectedSpreadId));
     });
   }
-  spreadSelect.addEventListener("change", updateSpreadPreview);
   updateSpreadPreview();
   const visual = { phase: "idle", progress: 0, holding: false, focus: 0, selectedPosition: -1, phaseStartedAt: 0 };
-  const shuffleDuration = 2400;
+  const shuffleDuration = 4200;
   let session = null;
   let generation = 0;
   let sceneReady = false;
-  let collectRequested = false;
   let automatic = false;
+  let playToEnd = false;
+  let deckCards = [];
+  let pointerStartedComplete = false;
   let holding = false;
   let heldMs = 0;
   let lastFrame = 0;
@@ -54,7 +68,6 @@ export function createDrawRitual(adapter) {
   let pending = false;
   let returnFocus = null;
   let retryAction = null;
-  let lastQuestion = "";
   let lastMethod = "manual";
   let context = null;
   let drag = null;
@@ -103,15 +116,41 @@ export function createDrawRitual(adapter) {
     surface.style.setProperty("--ritual-progress", String(visual.progress));
     const amount = Math.floor(visual.progress * 100);
     progress.value = amount;
-    progressLabel.textContent = amount === 100 ? "洗牌完成" : `洗牌 ${amount}%`;
-    collect.disabled = amount < 100 || !sceneReady || collectRequested;
-    hold.disabled = amount === 100;
-    if (automatic) {
-      progressLabel.textContent = `星光聚攏 · ${amount}%`;
-      return;
+    const movement = amount < 25 ? "旋轉" : amount < 50 ? "四散" : amount < 77 ? "收攏" : "炸散展開";
+    progressLabel.textContent = amount === 100 ? "洗牌完成" : `${movement} · ${amount}%`;
+    hold.disabled = false;
+    if (automatic && amount < 100) {
+      progressLabel.textContent = `迎接命運 · ${movement} · ${amount}%`;
     }
-    if (amount === 100 && !sceneReady) status.textContent = "洗牌完成，牌組正在聚攏…";
-    else if (amount === 100) status.textContent = "洗牌完成；接著先選擇切牌位置。";
+  }
+
+  function completeShuffle() {
+    stopHold();
+    playToEnd = false;
+    hold.hidden = false;
+    collect.hidden = false;
+    collect.disabled = !sceneReady;
+    surface.classList.add("is-shuffle-complete");
+    hold.setAttribute("aria-label", "再洗一次：點擊光手，重新完成旋轉、四散、收攏、炸散展開");
+    hold.title = "點擊光手，再洗一次";
+    find("draw-hand-instruction").textContent = "點擊光手再洗一次，或開始切牌";
+    status.textContent = "洗牌完成。可以重洗，準備好再開始切牌。";
+  }
+
+  function repeatShuffle() {
+    if (session?.phase !== "shuffling" || heldMs < shuffleDuration || !sceneReady) return;
+    session = createDrawSession({ deckKey: context.deckKey, cards: deckCards, method: lastMethod,
+      drawCount: session.drawCount, spreadId: session.spreadId, requireCut: true });
+    session.phase = "shuffling";
+    heldMs = 0;
+    playToEnd = true;
+    collect.hidden = true;
+    surface.classList.remove("is-shuffle-complete");
+    phase("shuffling", "再洗一次，讓牌卡流動", "旋轉、四散、收攏，最後炸散展開。完成後仍可再洗一次。");
+    find("draw-hand-instruction").textContent = "重新洗牌中…";
+    adapter.orderChanged?.(session);
+    updateProgress();
+    startHold(true);
   }
 
   function holdTick(now) {
@@ -121,14 +160,13 @@ export function createDrawRitual(adapter) {
     updateProgress();
     if (heldMs >= shuffleDuration) {
       stopHold();
-      finishShuffle();
-      if (!automatic && sceneReady) collect.focus({ preventScroll: true });
+      completeShuffle();
     }
     else holdFrame = requestAnimationFrame(holdTick);
   }
 
   function startHold(force = false) {
-    if (holding || hold.disabled || (automatic && !force) || surface.dataset.phase !== "shuffling") return;
+    if (holding || heldMs >= shuffleDuration || (automatic && !force) || surface.dataset.phase !== "shuffling") return;
     holding = true;
     visual.holding = true;
     lastFrame = performance.now();
@@ -257,7 +295,7 @@ export function createDrawRitual(adapter) {
   }
 
   function finishShuffle() {
-    if (!sceneReady || !collectRequested || heldMs < shuffleDuration || !session || session.phase !== "shuffling") return;
+    if (!sceneReady || heldMs < shuffleDuration || !session || session.phase !== "shuffling") return;
     stopHold();
     session.phase = "cutting";
     phase("cutting", "先切牌，再抽牌", "左右滑動，點選你的切牌位置；切牌另留在左下角。" );
@@ -268,34 +306,38 @@ export function createDrawRitual(adapter) {
     else find("draw-cards-next").focus({ preventScroll: true });
   }
 
-  async function start() {
+  async function start(method = "manual") {
     if (pending) return;
     const token = generation;
     clearError();
     pending = true;
+    lastMethod = method;
     find("draw-start").disabled = true;
+    find("draw-fate").disabled = true;
     status.textContent = "正在準備這副牌…";
     surface.setAttribute("aria-busy", "true");
     try {
       const cards = await adapter.loadDeck(context.deckKey);
       if (token !== generation || surface.hidden) return;
       if (!cards.length) throw new Error("Deck unavailable");
-      lastQuestion = question.value.trim().slice(0, 200);
-      lastMethod = surface.querySelector('input[name="draw-method"]:checked')?.value ?? "manual";
-      const layout = getDrawSpread(spreadSelect.value);
-      session = createDrawSession({ deckKey: context.deckKey, cards, method: lastMethod, question: lastQuestion, drawCount: layout.count, spreadId: layout.id, requireCut: true });
+      const layout = getDrawSpread(selectedSpreadId);
+      deckCards = cards;
+      session = createDrawSession({ deckKey: context.deckKey, cards, method: lastMethod, drawCount: layout.count, spreadId: layout.id, requireCut: true });
       session.phase = "shuffling";
       automatic = lastMethod === "starlight";
-      collectRequested = automatic;
+      playToEnd = automatic;
       heldMs = 0;
       sceneReady = false;
       pending = false;
       surface.removeAttribute("aria-busy");
       surface.classList.toggle("is-starlight", automatic);
       hold.hidden = automatic;
-      collect.hidden = automatic;
-      find("draw-skip").hidden = automatic;
-      phase("shuffling", automatic ? "讓星光帶路" : "讓牌卡，隨你的心意流動", automatic ? "星光正在聚攏，請稍候…" : "按住洗牌，喚起星流；放開，讓光慢下來。");
+      collect.hidden = true;
+      surface.classList.remove("is-shuffle-complete");
+      hold.setAttribute("aria-label", "按住光手洗牌；空白鍵可按住，Enter 可自動完成一輪");
+      hold.title = "按住光手洗牌；Enter 可自動完成一輪";
+      find("draw-hand-instruction").textContent = automatic ? "迎接命運，讓牌卡帶路" : "按住光手，讓牌卡回應你";
+      phase("shuffling", automatic ? "迎接命運" : "把手，交給這一刻", automatic ? "旋轉、四散、收攏，等待命運展開。" : "按住中央光手；旋轉、四散、收攏，最後炸散展開。");
       updateProgress();
       adapter.startAnimation(session);
       if (!automatic) hold.focus();
@@ -303,7 +345,8 @@ export function createDrawRitual(adapter) {
     } catch {
       if (token !== generation || surface.hidden) return;
       find("draw-start").disabled = false;
-      showError("這副牌暫時無法準備，請重試或返回牌盒。", start);
+      find("draw-fate").disabled = false;
+      showError("這副牌暫時無法準備，請重試或返回牌盒。", () => start(lastMethod));
     }
   }
 
@@ -313,6 +356,8 @@ export function createDrawRitual(adapter) {
     pending = false;
     closeSurface();
     session = null;
+    playToEnd = false;
+    deckCards = [];
     surface.removeAttribute("aria-busy");
     if (restore) {
       adapter.cancelAnimation();
@@ -338,74 +383,73 @@ export function createDrawRitual(adapter) {
     session = null;
     pending = false;
     chooseReadyAt = 0;
+    playToEnd = false;
+    pointerStartedComplete = false;
     Object.assign(visual, { progress: 0, holding: false, focus: 0, selectedPosition: -1 });
     returnFocus = document.activeElement;
     context = adapter.getContext();
     adapter.onOpen();
     clearError();
-    surface.classList.remove("is-starlight", "is-holding");
+    surface.classList.remove("is-starlight", "is-holding", "is-shuffle-complete");
     find("draw-slot").replaceChildren();
     find("draw-slot").classList.remove("is-filled");
     find("draw-ritual-deck").textContent = context.name;
     surface.style.setProperty("--draw-card-back", `url("${context.backUrl}")`);
-    question.value = lastQuestion;
-    find("draw-question-count").textContent = `${question.value.length} / 200`;
-    surface.querySelectorAll('input[name="draw-method"]').forEach((input) => { input.checked = input.value === lastMethod; });
+    updateSpreadPreview();
     find("draw-start").disabled = false;
-    phase("setup", "選一個牌陣，留一個問題", "逐張隨機正逆位 · 先切牌，再抽出你的主牌。");
+    find("draw-fate").disabled = false;
+    phase("setup", "在心裡，默念你的問題", "從下方選擇牌陣，再開始洗牌。切牌另留在左下角，不計入主牌張數。");
     surface.hidden = false;
     surface.setAttribute("aria-hidden", "false");
     surface.inert = false;
-    find("draw-start").focus({ preventScroll: true });
+    [...spreadOptions.children].find((button) => button.dataset.spread === selectedSpreadId)?.focus({ preventScroll: true });
+    [...spreadOptions.children].find((button) => button.dataset.spread === selectedSpreadId)?.scrollIntoView?.({ block: "nearest", inline: "center", behavior: "auto" });
   }
 
-  find("draw-start").addEventListener("click", start);
+  find("draw-start").addEventListener("click", () => start("manual"));
+  find("draw-fate").addEventListener("click", () => start("starlight"));
+  spreadOptions.addEventListener("wheel", (event) => {
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    event.preventDefault();
+    spreadOptions.scrollLeft += event.deltaY;
+  }, { passive: false });
+  collect.addEventListener("click", finishShuffle);
   find("draw-ritual-close").addEventListener("click", () => cancel());
   surface.addEventListener("keydown", (event) => {
     if (event.key === "Escape") { event.preventDefault(); cancel(); }
     event.stopPropagation();
   });
   retry.addEventListener("click", () => retryAction?.());
-  question.addEventListener("input", () => { find("draw-question-count").textContent = `${question.value.length} / 200`; });
   hold.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
     event.preventDefault();
     hold.focus();
     hold.setPointerCapture(event.pointerId);
+    pointerStartedComplete = heldMs >= shuffleDuration;
+    if (pointerStartedComplete) return;
     startHold();
   });
-  ["pointerup", "pointercancel", "lostpointercapture", "blur"].forEach((event) => hold.addEventListener(event, () => { if (!automatic) stopHold(); }));
+  ["pointerup", "pointercancel", "lostpointercapture", "blur"].forEach((event) => hold.addEventListener(event, () => { if (!playToEnd) stopHold(); }));
   hold.addEventListener("keydown", (event) => {
     if (event.key !== " ") return;
     event.preventDefault();
+    if (heldMs >= shuffleDuration) { if (!event.repeat) repeatShuffle(); return; }
     startHold();
   });
   hold.addEventListener("keyup", (event) => {
-    if (event.key === " ") { event.preventDefault(); stopHold(); }
+    if (event.key === " ") { event.preventDefault(); if (!playToEnd) stopHold(); }
   });
   // Enter and assistive activation run a timed shuffle without a sustained press.
-  hold.addEventListener("click", (event) => { if (event.detail === 0) startHold(); });
+  hold.addEventListener("click", (event) => {
+    if (heldMs >= shuffleDuration) {
+      // Releasing the original long press must not accidentally start the next cycle.
+      if (event.detail === 0 || pointerStartedComplete) repeatShuffle();
+      pointerStartedComplete = false;
+    } else if (event.detail === 0) { playToEnd = true; startHold(true); }
+  });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) stopHold();
-    else if (automatic && visual.phase === "shuffling" && heldMs < shuffleDuration) startHold(true);
-  });
-  collect.addEventListener("click", () => { collectRequested = true; finishShuffle(); });
-  find("draw-skip").addEventListener("click", () => {
-    if (!session || session.phase !== "shuffling") return;
-    automatic = true;
-    collectRequested = true;
-    session.method = "starlight";
-    stopHold();
-
-    surface.classList.add("is-starlight");
-    hold.hidden = true;
-    collect.hidden = true;
-    find("draw-skip").hidden = true;
-    status.textContent = "已交給星光選牌，等待牌組就緒…";
-    find("draw-ritual-close").focus({ preventScroll: true });
-    updateProgress();
-    if (heldMs >= shuffleDuration) finishShuffle();
-    else startHold(true);
+    else if (playToEnd && visual.phase === "shuffling" && heldMs < shuffleDuration) startHold(true);
   });
   find("draw-auto-pick").addEventListener("click", () => choose());
   track.addEventListener("focusin", (event) => {
@@ -470,7 +514,7 @@ export function createDrawRitual(adapter) {
       if (surface.hidden || session?.phase !== "shuffling") return;
       sceneReady = true;
       updateProgress();
-      finishShuffle();
+      if (heldMs >= shuffleDuration) completeShuffle();
     },
   };
 }

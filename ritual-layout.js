@@ -1,4 +1,15 @@
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
+const smooth = (value) => { const t = clamp(value, 0, 1); return t * t * (3 - 2 * t); };
+
+// A held-progress envelope, shared by cards and light. No per-frame randomness.
+export function getShuffleEnvelope(progress, wave = {}) {
+  const p = clamp(progress, 0, 1);
+  const scatter = smooth((p - 0.25) / 0.25);
+  const gather = smooth((p - 0.5) / 0.27);
+  const burst = smooth((p - 0.77) / 0.17);
+  return Object.assign(wave, { scatter, gather, burst, radius: 0.64 + 0.36 * scatter - 0.92 * gather + 0.92 * burst });
+}
+const shuffleWave = {};
 
 // Poses for the existing 0.61 × 1.01 card meshes, never turning a face toward the camera.
 export function getRitualCardPose(options, pose = {}) {
@@ -28,6 +39,22 @@ export function getRitualCardPose(options, pose = {}) {
     pose.ry = Math.PI + (reducedMotion ? 0 : Math.cos(angle) * 0.18);
     pose.rz = Math.sin(angle + lane) * 0.32;
     pose.scale = (mobile ? 0.36 : 0.49) * (0.92 + energy * 0.08);
+    if (!reducedMotion) {
+      const wave = getShuffleEnvelope(progress, shuffleWave);
+      const seed = ((position * 17 + 11) % 37) / 36;
+      const finalAngle = position / visibleCount * Math.PI * 2 + seed * 0.24;
+      const finalRadius = (lane ? 1.75 : 2.32) * (0.8 + seed * 0.2);
+      const finalX = Math.cos(finalAngle) * finalRadius * compact;
+      const finalY = Math.sin(finalAngle) * (lane ? 0.4 : 0.65);
+      pose.x = (pose.x * (1 - wave.burst) + finalX * wave.burst) * wave.radius;
+      pose.y = -0.02 + ((pose.y + 0.02) * (1 - wave.burst) + finalY * wave.burst) * wave.radius;
+      const closed = wave.gather * (1 - wave.burst);
+      pose.z = pose.z * (1 - closed) + (0.6 + position * 0.003) * closed;
+      pose.z = pose.z * (1 - wave.burst) + (0.6 + Math.sin(finalAngle) * 0.38 + lane * 0.2) * wave.burst;
+      pose.rx = wave.burst === 1 ? 0 : pose.rx * (1 - closed) * (1 - wave.burst);
+      pose.ry = Math.PI + (pose.ry - Math.PI) * (1 - closed) * (1 - wave.burst);
+      pose.rz = pose.rz * (1 - closed) * (1 - wave.burst) + Math.sin(finalAngle + lane) * 0.32 * wave.burst;
+    }
   } else if (phase === "selecting" || phase === "revealing") {
     const relative = position - focus;
     const spacing = mobile ? Math.max(0.22, aspect * 0.51) : 0.46 * compact;

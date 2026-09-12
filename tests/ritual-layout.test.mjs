@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getRitualCardPose } from '../ritual-layout.js';
+import { getRitualCardPose, getShuffleEnvelope } from '../ritual-layout.js';
 
 test('all deck sizes and viewports produce finite, face-down ritual poses', () => {
   for (const count of [78, 80]) for (const aspect of [0.39, 0.58, 0.82, 1.64, 2.2]) {
@@ -50,4 +50,26 @@ test('an existing pose may be reused without per-frame allocations', () => {
   assert.equal(getRitualCardPose({ phase: 'idle', position: 0, count: 78 }, pose), pose);
   assert.equal(pose.visible, false);
   assert.equal(getRitualCardPose({ phase: 'selecting', position: -1, count: 78 }).visible, false);
+});
+
+test('shuffle expands, gathers tightly and bursts into a stationary spread', () => {
+  assert.equal(getShuffleEnvelope(0).radius, 0.64);
+  assert.equal(getShuffleEnvelope(0.5).radius, 1);
+  assert.ok(getShuffleEnvelope(0.77).radius < 0.09);
+  assert.equal(getShuffleEnvelope(1).radius, 1);
+  const input = { phase: 'shuffling', position: 12, count: 78, energy: 1, aspect: 1.6, progress: 1 };
+  assert.deepEqual(getRitualCardPose({ ...input, time: 3 }), getRitualCardPose({ ...input, time: 30 }));
+  assert.deepEqual(getRitualCardPose({ ...input, reducedMotion: true, progress: 0 }), getRitualCardPose({ ...input, reducedMotion: true, progress: 1 }));
+});
+
+test('every shuffle phase stays bounded, finite and face down on phones and wide screens', () => {
+  for (const aspect of [0.39, 0.58, 0.82, 1.64, 2.2]) for (let progress = 0; progress <= 1; progress += 0.025) {
+    for (let position = 0; position < 36; position++) {
+      const pose = getRitualCardPose({ phase: 'shuffling', position, count: 80, aspect, energy: 1, time: 5, progress });
+      const halfWidth = (6.8 - pose.z) * Math.tan(16 * Math.PI / 180) * aspect;
+      assert.ok(Math.abs(pose.x) + pose.scale * 0.46 <= halfWidth + 0.025);
+      assert.ok(Math.cos(pose.ry) < -0.9);
+      assert.ok(Math.abs(pose.y) < 0.7);
+    }
+  }
 });
