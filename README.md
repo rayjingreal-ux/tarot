@@ -14,8 +14,9 @@ GitHub Pages：<https://rayjingreal-ux.github.io/tarot/>
 - The Unveiled 完整 80 張校正版牌面與實體牌背（以 07 號為透視基準，保留四角圓角透明去背）
 - Woodland、Red Visions 各 78 張完整牌面
 - Prose Poem 80 張校正版牌面（完整 78 張，加上教皇與寶劍十替代圖稿各一張；盒面標示 83 張，現有素材缺 3 張）
-- 單張牌儀式：可留白的提問、按住洗牌／星光選牌、左右滑動牌背並選取
-- 選定後回到既有 3D 舞台，翻至正面前隱藏牌名與編號；本輪結果鎖定，可重新抽牌或收回牌盒
+- 無彈窗的單張牌儀式：可留白的提問、按住洗牌／星光選牌，全部在原有 3D 舞台進行
+- 實體牌背雙環流動、金色與青綠星塵光軌；按住加速、放開減速，展牌後可直接拖曳／點選 3D 牌背
+- 選中牌背向中央靠近，接續既有翻牌展示；翻至正面前隱藏牌名與編號，本輪結果鎖定，可重新抽牌或收回牌盒
 - Prose Poem 的教皇與寶劍十 A/B 圖稿以同一牌義等機率抽取，一般瀏覽仍保留全部 80 張
 - 四副牌組的一般瀏覽／管理模式
 - The Unveiled、Red Visions 與 Prose Poem 的獨立校正工作檯
@@ -39,8 +40,11 @@ python -m http.server 8877
 - `app.js`：Three.js 場景、牌盒與卡牌互動
 - `draw-ritual.js` / `draw-ritual.css`：抽牌儀式控制與響應式介面
 - `draw-session.js`：獨立洗牌、變體分組及單次選牌鎖定
-- `tests/draw-session.test.mjs`：四副牌組與抽牌規則測試（`node --test tests/draw-session.test.mjs`）
+- `ritual-layout.js`：原舞台上的洗牌、扇形選牌與飛入中央座標
+- `ritual-effects.js`：可獨立回收的 Three.js 星塵、光軌、光環與低動態模式
+- `tests/*.test.mjs`：四副牌組、抽牌規則、舞台排版與光效測試（`node --test tests/*.test.mjs`）
 - `RELEASE-20260909.md`：新版驗收路徑與備份／回退方式
+- `RELEASE-20260912.md`：原舞台洗牌改版的驗收與回退方式
 - `assets/cards/`：78 張透明 WebP 發佈牌圖
 - `assets/woodland/`：Woodland 牌盒與說明書材質
 - `assets/unveiled/`：The Unveiled 牌盒材質、80 張牌面、縮圖、清單與實體牌背

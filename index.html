@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#050807" />
     <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
     <title>Arcana Cabinet｜塔羅藏書室</title>
-    <link rel="stylesheet" href="./styles.css?v=20260909-01" />
-    <link rel="stylesheet" href="./draw-ritual.css?v=20260909-01" />
+    <link rel="stylesheet" href="./styles.css?v=20260912-01" />
+    <link rel="stylesheet" href="./draw-ritual.css?v=20260912-01" />
     <script type="importmap">
       {
         "imports": {
@@ -160,7 +160,7 @@
           </div>
         </div>
 
-        <dialog id="draw-ritual" class="draw-ritual" aria-labelledby="draw-ritual-title" data-phase="setup">
+        <section id="draw-ritual" class="draw-ritual" aria-labelledby="draw-ritual-title" aria-hidden="true" data-phase="setup" hidden>
           <div class="draw-ritual-shell">
             <header class="draw-ritual-header">
               <button id="draw-ritual-close" class="draw-ritual-close" type="button" aria-label="返回牌盒">
@@ -194,7 +194,7 @@
                     <label class="draw-method-option">
                       <input type="radio" name="draw-method" value="manual" checked />
                       <span class="draw-method-sigil" aria-hidden="true">✦</span>
-                      <span><strong>手動洗牌</strong><small>按住牌陣，親手完成這次洗牌。</small></span>
+                      <span><strong>手動洗牌</strong><small>按住洗牌，讓立體牌卡隨指尖流動。</small></span>
                     </label>
                     <label class="draw-method-option">
                       <input type="radio" name="draw-method" value="starlight" />
@@ -203,7 +203,7 @@
                     </label>
                     <div class="draw-single-card-note">
                       <i aria-hidden="true"></i>
-                      <p><strong>單張牌指引</strong><span>一次只抽一張。牌面將在選定後回到 3D 舞台，等待你親手翻開。</span></p>
+                      <p><strong>單張牌指引</strong><span>一次只抽一張。牌卡會在原舞台洗牌、展開，再靠近中央，等待你親手翻開。</span></p>
                     </div>
                   </fieldset>
                 </div>
@@ -215,17 +215,6 @@
               <section class="draw-panel draw-shuffling" data-draw-panel="shuffling" aria-labelledby="draw-shuffling-title" hidden>
                 <h3 id="draw-shuffling-title" class="sr-only">洗牌</h3>
                 <div class="draw-shuffling-layout">
-                  <div class="draw-shuffle-stage" aria-hidden="true">
-                    <div class="draw-starlight-field"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                    <div class="draw-scatter-deck">
-                      <i class="draw-scatter-card"></i><i class="draw-scatter-card"></i><i class="draw-scatter-card"></i>
-                      <i class="draw-scatter-card"></i><i class="draw-scatter-card"></i><i class="draw-scatter-card"></i>
-                      <i class="draw-scatter-card"></i><i class="draw-scatter-card"></i><i class="draw-scatter-card"></i>
-                      <i class="draw-scatter-card"></i><i class="draw-scatter-card"></i><i class="draw-scatter-card"></i>
-                    </div>
-                    <span class="draw-shuffle-orbit"></span>
-                  </div>
-
                   <div class="draw-shuffle-controls">
                     <button id="draw-hold" class="draw-hold" type="button" title="按住滑鼠或空白鍵洗牌；按 Enter 自動完成洗牌">
                       <i aria-hidden="true">✦</i><span><strong>按住洗牌</strong><small>按住指尖或空白鍵 · Enter 自動洗牌</small></span>
@@ -254,7 +243,7 @@
 
                 <div class="draw-card-browser">
                   <button id="draw-cards-previous" class="draw-track-arrow is-previous" type="button" aria-controls="draw-card-track" aria-label="上一區牌">←</button>
-                  <div id="draw-card-track" class="draw-card-track" role="group" aria-label="可左右滑動的牌面選擇"></div>
+                  <div id="draw-card-track" class="draw-card-track" role="group" aria-label="立體牌背選擇的鍵盤操作列"></div>
                   <button id="draw-cards-next" class="draw-track-arrow is-next" type="button" aria-controls="draw-card-track" aria-label="下一區牌">→</button>
                 </div>
 
@@ -269,7 +258,7 @@
               <button id="draw-retry" type="button" hidden>重新嘗試</button>
             </div>
           </div>
-        </dialog>
+        </section>
 
         <section id="browse-panel" class="browse-panel" aria-hidden="true" aria-label="一般卡牌瀏覽與管理">
           <header class="browse-header">
@@ -316,6 +305,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260909-01"></script>
+    <script type="module" src="./app.js?v=20260912-01"></script>
   </body>
 </html>

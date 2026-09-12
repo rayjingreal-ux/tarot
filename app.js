@@ -1,7 +1,9 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createDrawRitual } from "./draw-ritual.js?v=20260909-01";
-import { markDrawRevealed } from "./draw-session.js?v=20260909-01";
+import { createDrawRitual } from "./draw-ritual.js?v=20260912-01";
+import { markDrawRevealed } from "./draw-session.js?v=20260912-01";
+import { createRitualEffects } from "./ritual-effects.js?v=20260912-01";
+import { getRitualCardPose } from "./ritual-layout.js?v=20260912-01";
 
 
 const MAJOR_ARCANA = [
@@ -685,6 +687,10 @@ let selectedFlipped = false;
 let drawRitual = null;
 let readingResult = null;
 let drawRestoreState = null;
+const ritualMotion = { energy: 0, clock: 0, focus: 0, hover: -1 };
+let ritualPointer = null;
+const ritualPose = {};
+const ritualPoseOptions = {};
 let cameraTween = null;
 let invokeAge = 99;
 let shakeTrauma = 0;
@@ -914,7 +920,11 @@ browseViewer.addEventListener("click", (event) => {
 
 window.addEventListener("keydown", (event) => {
   if (!inspectionVisible) return;
-  if (drawRitual?.isOpen || event.defaultPrevented) return;
+  if (event.defaultPrevented) return;
+  if (drawRitual?.isOpen) {
+    if (event.key === "Escape") { event.preventDefault(); drawRitual.cancel(); }
+    return;
+  }
   if (event.key === "Escape" && !browseViewer.open) { leaveInspection(); return; }
   if (event.target.closest?.('input, textarea, select, button, a, [contenteditable="true"]')) return;
   if (activeMode === "cards" && !isCardTransitionActive()) {
@@ -1712,6 +1722,7 @@ function cancelDrawAnimation() {
   inspection.dataset.woodlandPhase = woodlandPhase;
   if (snapshot.phase === WOODLAND_PHASE.INNER_READY) inspection.classList.add("is-inner-box-ready");
   selectedFlipped = snapshot.flipped;
+  if (snapshot.mode === "cards") requestCardTextureWindow(selectedCard);
   inspection.dataset.cardFace = selectedFlipped ? "back" : "front";
   flipCardButton.querySelector("span").textContent = selectedFlipped ? "翻至正面" : "翻至背面";
   updateSelectedCardInfo();
@@ -1740,18 +1751,50 @@ function initializeDrawRitual() {
       };
       setCardCatalogOpen(false);
       setViewMenuOpen(false);
+      if (activeMode === "browse") setMode("box", false);
+      controls.enabled = false;
+    },
+    phaseChanged(value) {
+      const active = value !== "idle";
+      if (active) inspection.dataset.ritualPhase = value;
+      else delete inspection.dataset.ritualPhase;
+      inspection.querySelectorAll(".artifact-copy, .mode-tabs, #box-controls, #card-controls").forEach((element) => { element.inert = active; });
+      controls.enabled = !active && activeMode !== "browse";
+      renderer.domElement.tabIndex = value === "selecting" ? 0 : -1;
+      renderer.domElement.setAttribute("aria-label", value === "selecting" ? "立體牌背選擇：左右鍵移動，Enter 選牌" : "3D 牌盒與卡牌展示");
+      if (!active) {
+        ritualPointer = null;
+        ritualMotion.hover = -1;
+        cardMeshes.forEach((card) => { card.visible = true; card.rotation.x = 0; });
+        renderer.domElement.style.cursor = "grab";
+        ritualEffects.setState({ phase: "idle" });
+      }
     },
     loadDeck: ensureDeckCardExperience,
-    startAnimation() {
+    startAnimation(session) {
       readingResult = null;
       updateReadingResult();
-      if (isBookDeck() && woodlandPhase === WOODLAND_PHASE.INNER_READY && !cardRevealComplete) {
-        beginCardSummoning({ fromRitual: true });
-      } else {
-        cardRevealComplete = true;
-        setMode("cards", false);
-        beginCardRedraw(true);
-      }
+      cardRevealComplete = true;
+      cardSummonStartedAt = 0;
+      resetCardTransitionState();
+      setMode("cards", false);
+      setCardInteractionLocked(true);
+      controls.enabled = false;
+      ritualMotion.clock = 0;
+      ritualMotion.energy = 0;
+      ritualMotion.focus = 0;
+      ritualMotion.hover = -1;
+      const positions = new Map(session.order.map((index, position) => [index, position]));
+      cardMeshes.forEach((card, index) => {
+        card.userData.ritualPosition = positions.get(index) ?? -1;
+        card.rotation.set(0, Math.PI, 0);
+      });
+      artifactTargetScale = 0.6;
+      artifactTargetPosition.set(0, -1.12, -0.8);
+      artifactBrightnessTarget = 0.16;
+      queueCamera([0, 0.25, 6.8], [0, 0.1, 0.4], deckCarouselReducedMotion.matches ? 1 : 900);
+      playInvocationSound();
+      drawRitual.animationComplete();
     },
     async prepareSelection(index, session) {
       if (!inspectionVisible || activeDeckKey !== session.deckKey || drawRitual.session !== session) throw new Error("Draw cancelled");
@@ -1772,7 +1815,11 @@ function initializeDrawRitual() {
       playCardSlide(1);
     },
     cancelAnimation: cancelDrawAnimation,
-    focusResult() { flipCardButton.focus({ preventScroll: true }); },
+    focusChoices() { renderer.domElement.focus({ preventScroll: true }); },
+    focusResult() {
+      const result = readingResult;
+      focusWhenVisible(() => inspectionVisible && !drawRitual.isOpen && readingResult === result ? flipCardButton : null, 1000);
+    },
   });
   document.querySelector("#prepare-draw").addEventListener("click", () => {
     if (isCardTransitionActive() || drawRitual.isOpen) return;
@@ -1946,6 +1993,7 @@ function playInvocationSound() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const scene = new THREE.Scene();
+const ritualEffects = createRitualEffects(scene, { reducedMotion: deckCarouselReducedMotion.matches });
 const camera = new THREE.PerspectiveCamera(32, 1, 0.05, 30);
 camera.position.set(0.32, 0.18, 4.55);
 
@@ -2932,6 +2980,9 @@ function assignCardFaceTexture(index, texture) {
 function protectedCardTextureIndices(centerIndex) {
   const protectedIndices = new Set();
   if (!CARDS.length) return protectedIndices;
+  // Keep a revealed result available while preparing a new draw, including cancellation.
+  if (readingResult) protectedIndices.add(readingResult.index);
+  if (drawRestoreState?.result) protectedIndices.add(drawRestoreState.index);
   for (let offset = -2; offset <= 2; offset += 1) {
     protectedIndices.add((centerIndex + offset + CARDS.length) % CARDS.length);
   }
@@ -3490,6 +3541,7 @@ function finishDeckReturn() {
     "active",
     3200
   );
+  focusWhenVisible(() => inspectionVisible && activeMode === "box" && !drawRitual?.isOpen ? openButton : null, 1000);
 }
 
 
@@ -3542,7 +3594,7 @@ renderer.domElement.addEventListener("click", (event) => {
 });
 
 renderer.domElement.addEventListener("pointermove", (event) => {
-  if (!inspectionVisible || activeMode !== "box") return;
+  if (!inspectionVisible || drawRitual?.isOpen || activeMode !== "box") return;
   setPointerFromEvent(event);
   const activeRoot = isBookDeck(activeDeckKey) ? woodlandRoot : unveiledRoot;
   const hasObject = raycaster.intersectObject(activeRoot, true).length > 0;
@@ -3550,7 +3602,7 @@ renderer.domElement.addEventListener("pointermove", (event) => {
 });
 
 renderer.domElement.addEventListener("click", (event) => {
-  if (!inspectionVisible || activeMode !== "box" || isCardTransitionActive()) return;
+  if (!inspectionVisible || drawRitual?.isOpen || activeMode !== "box" || isCardTransitionActive()) return;
   setPointerFromEvent(event);
   const activeRoot = isBookDeck(activeDeckKey) ? woodlandRoot : unveiledRoot;
 
@@ -3594,6 +3646,64 @@ const VIEW_LABELS = {
   front: "正面", back: "背面", left: "左側", right: "右側", top: "頂面", bottom: "底面",
 };
 
+function pickRitualPosition(event) {
+  setPointerFromEvent(event);
+  const hit = raycaster.intersectObjects(cardMeshes.filter((card) => card.visible), true)[0];
+  if (!hit) return -1;
+  let card = hit.object;
+  while (card.parent !== cardsGroup && card.parent) card = card.parent;
+  return card.userData.ritualPosition ?? -1;
+}
+
+renderer.domElement.addEventListener("pointerdown", (event) => {
+  if (drawRitual?.visual.phase !== "selecting" || event.button !== 0) return;
+  ritualPointer = { id: event.pointerId, x: event.clientX, focus: drawRitual.visual.focus, moved: false };
+  renderer.domElement.setPointerCapture(event.pointerId);
+});
+renderer.domElement.addEventListener("pointermove", (event) => {
+  if (drawRitual?.visual.phase !== "selecting") return;
+  if (ritualPointer?.id === event.pointerId) {
+    const delta = event.clientX - ritualPointer.x;
+    if (Math.abs(delta) > 7) ritualPointer.moved = true;
+    if (ritualPointer.moved) {
+      const step = stage.clientWidth / (camera.aspect < 0.85 ? 5 : 10);
+      drawRitual.focusChoice(ritualPointer.focus - delta / step, false);
+      ritualMotion.hover = -1;
+      renderer.domElement.style.cursor = "grabbing";
+      event.preventDefault();
+    }
+  } else {
+    ritualMotion.hover = pickRitualPosition(event);
+    renderer.domElement.style.cursor = ritualMotion.hover < 0 ? "grab" : "pointer";
+  }
+});
+for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
+  renderer.domElement.addEventListener(eventName, () => { ritualPointer = null; });
+}
+renderer.domElement.addEventListener("pointerleave", () => { ritualMotion.hover = -1; });
+renderer.domElement.addEventListener("click", (event) => {
+  if (drawRitual?.visual.phase !== "selecting") return;
+  const position = pickRitualPosition(event);
+  if (position >= 0) drawRitual.choose(position);
+});
+renderer.domElement.addEventListener("wheel", (event) => {
+  if (drawRitual?.visual.phase !== "selecting") return;
+  event.preventDefault();
+  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+  if (delta) drawRitual.focusChoice(drawRitual.visual.focus + Math.sign(delta), false);
+}, { passive: false });
+renderer.domElement.addEventListener("keydown", (event) => {
+  if (drawRitual?.visual.phase !== "selecting") return;
+  const focus = drawRitual.visual.focus;
+  if (event.key === "ArrowLeft") drawRitual.focusChoice(focus - 1, false);
+  else if (event.key === "ArrowRight") drawRitual.focusChoice(focus + 1, false);
+  else if (event.key === "Home") drawRitual.focusChoice(0, false);
+  else if (event.key === "End") drawRitual.focusChoice(drawRitual.session.order.length - 1, false);
+  else if (event.key === "Enter" || event.key === " ") drawRitual.choose(focus);
+  else return;
+  event.preventDefault();
+});
+
 function queueCamera(position, target = [0, 0, 0], duration = 760) {
   cameraTween = {
     start: performance.now(),
@@ -3633,6 +3743,10 @@ function updateCameraTween(now) {
 
 function updateCards(dt, time) {
   if (!cardsGroup.visible) return;
+  if (drawRitual?.isOpen && drawRitual.visual.phase !== "setup") {
+    updateRitualCards(dt, time);
+    return;
+  }
   const returningCards = deckReturnStartedAt > 0 && deckReturnStage === "cards-to-light";
   const redrawing = cardRedrawStartedAt > 0;
   cardMeshes.forEach((card, index) => {
@@ -3703,6 +3817,38 @@ function updateCards(dt, time) {
   }
 }
 
+
+function updateRitualCards(dt, time) {
+  const state = drawRitual.visual;
+  ritualMotion.energy = THREE.MathUtils.damp(ritualMotion.energy, state.holding ? 1 : 0.05, 3.5, dt);
+  ritualMotion.clock += dt * (0.12 + ritualMotion.energy * 1.55);
+  ritualMotion.focus = THREE.MathUtils.damp(ritualMotion.focus, state.focus, 9, dt);
+  Object.assign(ritualPoseOptions, {
+    phase: state.phase, count: drawRitual.session.order.length, time: ritualMotion.clock,
+    energy: ritualMotion.energy, progress: (performance.now() - state.phaseStartedAt) / 1150,
+    focus: ritualMotion.focus, selectedPosition: state.selectedPosition, aspect: camera.aspect,
+    reducedMotion: deckCarouselReducedMotion.matches,
+  });
+  for (const card of cardMeshes) {
+    ritualPoseOptions.position = card.userData.ritualPosition;
+    const pose = getRitualCardPose(ritualPoseOptions, ritualPose);
+    card.visible = pose.visible;
+    if (!pose.visible) continue;
+    const hovered = state.phase === "selecting" && card.userData.ritualPosition === ritualMotion.hover;
+    const speed = deckCarouselReducedMotion.matches ? 1000 : 9;
+    card.position.x = THREE.MathUtils.damp(card.position.x, pose.x, speed, dt);
+    card.position.y = THREE.MathUtils.damp(card.position.y, pose.y + (hovered ? 0.13 : 0), speed, dt);
+    card.position.z = THREE.MathUtils.damp(card.position.z, pose.z + (hovered ? 0.13 : 0), speed, dt);
+    card.rotation.x = THREE.MathUtils.damp(card.rotation.x, pose.rx, speed, dt);
+    card.rotation.y = THREE.MathUtils.damp(card.rotation.y, pose.ry, speed, dt);
+    card.rotation.z = THREE.MathUtils.damp(card.rotation.z, pose.rz, speed, dt);
+    card.scale.setScalar(THREE.MathUtils.damp(card.scale.x, pose.scale * (hovered ? 1.04 : 1), speed, dt));
+    card.userData.reflectionMaterials.forEach((material) => {
+      material.uniforms.uSweep.value = deckCarouselReducedMotion.matches ? 0.5 : (time * 0.28 + card.userData.ritualPosition * 0.09) % 1.38 - 0.16;
+      material.uniforms.uOpacity.value = hovered ? 1.4 : 0.65 + ritualMotion.energy * 0.6;
+    });
+  }
+}
 
 function updateCasting(dt) {
   invokeAge += dt;
@@ -3788,7 +3934,7 @@ function updateArtifactPresentation(dt) {
 
 
 function updateCardFocus(dt, time) {
-  const cardActive = inspectionVisible && activeMode === "cards" && cardsGroup.visible && !isCardTransitionActive();
+  const cardActive = inspectionVisible && !drawRitual?.isOpen && activeMode === "cards" && cardsGroup.visible && !isCardTransitionActive();
   const selected = cardMeshes[selectedCard];
   let frontFacing = 1;
   if (selected) {
@@ -3902,6 +4048,12 @@ function animate(now) {
   updateArtifactPresentation(dt);
   updateCardFocus(dt, time);
   updateCasting(dt);
+  if (drawRitual?.isOpen) {
+    const visual = drawRitual.visual;
+    const effectProgress = visual.phase === "revealing" ? Math.min(1, (now - visual.phaseStartedAt) / 1150) : visual.progress;
+    ritualEffects.setState({ phase: visual.phase, progress: effectProgress, holding: visual.holding, aspect: camera.aspect });
+  }
+  ritualEffects.update(dt, time);
   updateCameraTween(now);
 
   const positions = particleGeometry.attributes.position.array;
