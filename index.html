@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#050807" />
     <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
     <title>Arcana Cabinet｜塔羅藏書室</title>
-    <link rel="stylesheet" href="./styles.css?v=20260912-01" />
-    <link rel="stylesheet" href="./draw-ritual.css?v=20260912-01" />
+    <link rel="stylesheet" href="./styles.css?v=20260913-01" />
+    <link rel="stylesheet" href="./draw-ritual.css?v=20260913-01" />
     <script type="importmap">
       {
         "imports": {
@@ -148,6 +148,8 @@
             <button id="next-card" type="button" aria-label="下一張牌">→</button>
           </div>
           <div class="deck-flow-actions">
+            <button id="reveal-reading" type="button" hidden>全部翻開</button>
+            <button id="reading-overview" type="button" hidden>牌陣總覽</button>
             <button id="redraw-card" type="button"><span>重新抽牌</span><small>開啟新一輪</small></button>
             <button id="return-deck" type="button"><span>收回牌盒</span><small>依序歸位</small></button>
           </div>
@@ -160,6 +162,12 @@
           </div>
         </div>
 
+        <section id="spread-result" aria-label="本輪牌陣" hidden>
+          <header><p id="spread-result-summary"></p><h2 id="spread-result-title"></h2></header>
+          <div id="spread-result-labels"></div>
+          <div id="reading-card-list" class="reading-card-list" role="group" aria-label="依抽取順序選擇本輪牌卡"></div>
+        </section>
+
         <section id="draw-ritual" class="draw-ritual" aria-labelledby="draw-ritual-title" aria-hidden="true" data-phase="setup" hidden>
           <div class="draw-ritual-shell">
             <header class="draw-ritual-header">
@@ -168,14 +176,21 @@
               </button>
               <p id="draw-ritual-deck">SELECTED DECK · 準備抽牌</p>
               <div class="draw-ritual-heading">
-                <span>ONE CARD RITUAL</span>
-                <h2 id="draw-ritual-title">抽出一張牌</h2>
+                <span>TAROT DRAW RITUAL</span>
+                <h2 id="draw-ritual-title">選一個牌陣</h2>
                 <p id="draw-ritual-status" role="status" aria-live="polite" aria-atomic="true">寫下一個問題，選擇你的洗牌方式。</p>
               </div>
             </header>
 
             <div class="draw-ritual-body">
               <section class="draw-panel draw-setup" data-draw-panel="setup" aria-labelledby="draw-setup-title">
+                <div id="draw-spread-setup">
+                  <label for="draw-spread">選擇抽牌張數或牌陣</label>
+                  <select id="draw-spread" name="draw-spread"></select>
+                  <p id="draw-spread-description"></p>
+                  <div id="draw-spread-preview" aria-hidden="true"></div>
+                  <p class="draw-cut-note">另有一張切牌，不計入張數，結果顯示於左下角。</p>
+                </div>
                 <div class="draw-setup-grid">
                   <div class="draw-question-block">
                     <label for="draw-question">
@@ -184,7 +199,7 @@
                     </label>
                     <textarea id="draw-question" maxlength="200" rows="5" placeholder="把問題留在這裡……"></textarea>
                     <div class="draw-question-meta">
-                      <p>單張牌適合回應一個清晰問題；也可以留白，單純接收此刻的訊息。</p>
+                      <p>留下一個清晰問題；也可以留白，單純接收此刻的訊息。</p>
                       <output id="draw-question-count" for="draw-question">0 / 200</output>
                     </div>
                   </div>
@@ -203,7 +218,7 @@
                     </label>
                     <div class="draw-single-card-note">
                       <i aria-hidden="true"></i>
-                      <p><strong>單張牌指引</strong><span>一次只抽一張。牌卡會在原舞台洗牌、展開，再靠近中央，等待你親手翻開。</span></p>
+                      <p><strong>切牌與牌陣</strong><span>先切牌，再依牌位抽齊主牌。每張牌的正逆位各自隨機決定，翻牌前不會透露。</span></p>
                     </div>
                   </fieldset>
                 </div>
@@ -224,7 +239,7 @@
                       <output id="draw-progress-label" for="draw-progress">尚未開始 · 0%</output>
                     </div>
                     <div class="draw-panel-actions">
-                      <button id="draw-collect" class="draw-primary-action" type="button" disabled><span>洗好了，展牌</span><i aria-hidden="true">→</i></button>
+                      <button id="draw-collect" class="draw-primary-action" type="button" disabled><span>洗好了，先切牌</span><i aria-hidden="true">→</i></button>
                       <button id="draw-skip" class="draw-secondary-action" type="button">自動選牌</button>
                     </div>
                   </div>
@@ -235,7 +250,7 @@
                 <div class="draw-selection-head">
                   <div>
                     <span>TRUST THE FIRST PULL</span>
-                    <h3 id="draw-selecting-title">憑直覺選一張</h3>
+                    <h3 id="draw-selecting-title">憑直覺選牌</h3>
                     <p id="draw-selection-count" aria-live="polite">尚未選牌 · 0 / 1</p>
                   </div>
                   <div id="draw-slot" class="draw-slot" role="img" aria-label="選中牌背"></div>
@@ -305,6 +320,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260912-01"></script>
+    <script type="module" src="./app.js?v=20260913-01"></script>
   </body>
 </html>

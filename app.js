@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createDrawRitual } from "./draw-ritual.js?v=20260912-01";
-import { markDrawRevealed } from "./draw-session.js?v=20260912-01";
-import { createRitualEffects } from "./ritual-effects.js?v=20260912-01";
-import { getRitualCardPose } from "./ritual-layout.js?v=20260912-01";
+import { createDrawRitual } from "./draw-ritual.js?v=20260913-01";
+import { markDrawRevealed } from "./draw-session.js?v=20260913-01";
+import { createRitualEffects } from "./ritual-effects.js?v=20260913-01";
+import { getRitualCardPose } from "./ritual-layout.js?v=20260913-01";
+import { getDrawSpread, getReadingCardPose } from "./draw-spreads.js?v=20260913-01";
 
 
 const MAJOR_ARCANA = [
@@ -686,11 +687,13 @@ let selectedCard = 0;
 let selectedFlipped = false;
 let drawRitual = null;
 let readingResult = null;
+let revealingResult = null;
 let drawRestoreState = null;
 const ritualMotion = { energy: 0, clock: 0, focus: 0, hover: -1 };
 let ritualPointer = null;
 const ritualPose = {};
 const ritualPoseOptions = {};
+const readingLabelPoint = new THREE.Vector3();
 let cameraTween = null;
 let invokeAge = 99;
 let shakeTrauma = 0;
@@ -907,6 +910,16 @@ returnDeckButton.addEventListener("click", beginDeckReturn);
 cardCatalogToggle.addEventListener("click", () => {
   if (isCardTransitionActive()) return;
   setCardCatalogOpen(cardCatalogToggle.getAttribute("aria-expanded") !== "true");
+});
+document.querySelector("#reveal-reading").addEventListener("click", revealReading);
+document.querySelector("#reading-overview").addEventListener("click", () => {
+  if (!readingResult || drawRitual?.isOpen) return;
+  readingResult.detail = null;
+  updateReadingResult();
+});
+document.querySelector("#reading-card-list").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-reading-index]");
+  if (button) focusReadingCard(Number(button.dataset.readingIndex), true);
 });
 
 document.querySelectorAll("[data-browse-filter]").forEach((button) => {
@@ -1490,11 +1503,11 @@ function setMode(mode, userInitiated = false) {
     });
     queueCamera([0, 0.18, 4.55], [0, 0.01, 0.4], 760);
     selectCard(readingResult?.index ?? selectedCard, false);
-    if (readingResult?.session.phase === "complete") {
-      selectedFlipped = false;
-      inspection.dataset.cardFace = "front";
-      flipCardButton.querySelector("span").textContent = "翻至背面";
-      updateSelectedCardInfo();
+    if (readingResult) {
+      controls.enabled = false;
+      artifactTargetScale = 0.6;
+      artifactTargetPosition.set(0, -1.12, -0.8);
+      queueCamera([0, 0.25, 6.8], [0, 0.1, 0.4], deckCarouselReducedMotion.matches ? 1 : 760);
     }
     triggerMysticEffect(0.35);
   } else {
@@ -1512,6 +1525,7 @@ function setMode(mode, userInitiated = false) {
     artifactTargetPosition.set(0, 0, 0);
     activateView("front");
   }
+  updateReadingResult();
 }
 
 
@@ -1624,12 +1638,14 @@ function setBoxOpen(value, { sound = false } = {}) {
 
 function selectCard(index, effect = true) {
   if (!CARDS.length) return;
-  if (readingResult && index !== readingResult.index) return;
+  const readingEntry = readingEntries().find((entry) => entry.index === index);
+  if (readingResult && !readingEntry) return;
   const previousCard = selectedCard;
   selectedCard = (index + CARDS.length) % CARDS.length;
-  selectedFlipped = true;
-  inspection.dataset.cardFace = "back";
-  flipCardButton.querySelector("span").textContent = "翻至正面";
+  if (readingResult) readingResult.index = selectedCard;
+  selectedFlipped = readingEntry ? !readingEntry.faceUp : true;
+  inspection.dataset.cardFace = selectedFlipped ? "back" : "front";
+  flipCardButton.querySelector("span").textContent = selectedFlipped ? "翻至正面" : "翻至背面";
   CARDS.forEach((card, cardNumber) => {
     cardRail.children[cardNumber]?.classList.toggle("is-active", cardNumber === selectedCard);
   });
@@ -1639,7 +1655,50 @@ function selectCard(index, effect = true) {
     const rawDirection = index - previousCard;
     playCardSlide(rawDirection === 0 ? 0 : Math.sign(rawDirection));
   }
-  requestCardTextureWindow(selectedCard);
+  if (readingResult) void ensureCardTexture(selectedCard);
+  else requestCardTextureWindow(selectedCard);
+}
+
+function readingEntries(result = readingResult) {
+  return result ? [...result.session.draws, ...(result.session.cut ? [result.session.cut] : [])] : [];
+}
+
+function focusReadingCard(index, detail = false) {
+  if (!readingResult || drawRitual?.isOpen || isCardTransitionActive()) return;
+  if (!readingEntries().some((entry) => entry.index === index)) return;
+  selectCard(index, false);
+  readingResult.detail = detail ? index : null;
+  updateReadingResult();
+}
+
+async function revealReading() {
+  const result = readingResult;
+  if (!result || revealingResult === result || drawRitual?.isOpen || isCardTransitionActive()) return;
+  const button = document.querySelector("#reveal-reading");
+  revealingResult = result;
+  button.disabled = true;
+  const entries = readingEntries(result);
+  const prepared = await Promise.all(entries.map((entry) => ensureCardTexture(entry.index)));
+  if (revealingResult === result) {
+    revealingResult = null;
+    button.disabled = false;
+  }
+  if (result !== readingResult || drawRitual?.isOpen || !inspectionVisible) return;
+  if (prepared.some((texture) => !texture)) {
+    document.querySelector("#reading-result-status").textContent = "部分牌面載入失敗，請再次翻開；本輪結果不會改變。";
+    return;
+  }
+  entries.forEach((entry) => {
+    markDrawRevealed(result.session, entry.index);
+    entry.faceUp = true;
+    assignCardFaceTexture(entry.index, cardTexturePool.get(entry.index).texture);
+  });
+  selectedFlipped = false;
+  inspection.dataset.cardFace = "front";
+  flipCardButton.querySelector("span").textContent = "翻至背面";
+  updateSelectedCardInfo();
+  updateReadingResult();
+  playCardFlip(-1);
 }
 
 function updateSelectedCardInfo(loadingFace = false) {
@@ -1649,22 +1708,53 @@ function updateSelectedCardInfo(loadingFace = false) {
     cardName.textContent = loadingFace ? "正在準備牌面…" : "尚未翻牌";
     return;
   }
-  cardIndex.textContent = `ARCANA ${CARDS[selectedCard].numeral}`;
+  const entry = readingEntries().find((card) => card.index === selectedCard);
+  cardIndex.textContent = `ARCANA ${CARDS[selectedCard].numeral}${entry ? ` · ${entry.reversed ? "逆位" : "正位"}` : ""}`;
   cardName.textContent = CARDS[selectedCard].name;
 }
 
 function updateReadingResult() {
-  inspection.dataset.readingActive = String(Boolean(readingResult));
+  inspection.dataset.readingActive = String(Boolean(readingResult && activeMode === "cards"));
   const strip = document.querySelector("#reading-result-strip");
   if (!strip) return;
   strip.hidden = !readingResult;
+  document.querySelector("#spread-result").hidden = !readingResult || activeMode !== "cards";
+  document.querySelector("#reveal-reading").hidden = !readingResult;
+  document.querySelector("#reveal-reading").disabled = Boolean(readingResult && revealingResult === readingResult);
+  document.querySelector("#reading-overview").hidden = !readingResult;
   if (!readingResult) return;
   const { session } = readingResult;
+  const spread = getDrawSpread(session.spreadId);
   document.querySelector("#reading-question").textContent = session.question || "這一刻，留在心裡的問題";
-  document.querySelector("#reading-method").textContent = session.method === "starlight" ? "星光選牌 · 單張" : "手動選牌 · 單張";
-  document.querySelector("#reading-result-status").textContent = session.phase === "complete"
-    ? "這一輪的牌已揭曉；你可以細看牌面，或開始新一輪。"
-    : "1 / 1 已選定 · 點擊中央牌背或「翻至正面」揭曉";
+  document.querySelector("#reading-method").textContent = `${session.method === "starlight" ? "星光選牌" : "手動選牌"} · ${spread.name}`;
+  document.querySelector("#reading-result-status").textContent = `主牌已揭曉 ${session.draws.filter((entry) => entry.revealed).length} / ${session.drawCount} · 切牌${session.cut?.revealed ? "已揭曉" : "待翻開"}`;
+  document.querySelector("#spread-result-title").textContent = spread.name;
+  document.querySelector("#spread-result-summary").textContent = `${session.drawCount} 張主牌 ＋ 1 張切牌 · 點牌翻開，選牌位可放大`;
+  const labels = document.querySelector("#spread-result-labels");
+  const list = document.querySelector("#reading-card-list");
+  const focusedIndex = list.contains(document.activeElement) ? document.activeElement.dataset.readingIndex : null;
+  labels.replaceChildren();
+  list.replaceChildren();
+  readingEntries().forEach((entry, slot) => {
+    const cut = entry === session.cut;
+    const position = cut ? "切牌" : `${slot + 1} · ${spread.slots[slot].label}`;
+    const identity = entry.faceUp ? `${CARDS[entry.index].name} · ${entry.reversed ? "逆位" : "正位"}` : "尚未翻牌";
+    const label = document.createElement("div");
+    label.className = `spread-card-label${cut ? " is-cut" : ""}`;
+    label.dataset.readingIndex = String(entry.index);
+    const title = document.createElement("strong"); title.textContent = position;
+    const subtitle = document.createElement("span"); subtitle.textContent = readingResult.detail !== null ? identity : entry.faceUp ? (entry.reversed ? "逆位" : "正位") : "尚未翻牌";
+    label.append(title, subtitle);
+    labels.append(label);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.readingIndex = String(entry.index);
+    button.textContent = cut ? "切牌" : String(slot + 1);
+    button.setAttribute("aria-label", `${position}，${identity}，放大檢視`);
+    button.setAttribute("aria-pressed", String(entry.index === selectedCard));
+    list.append(button);
+  });
+  if (focusedIndex !== null) list.querySelector(`[data-reading-index="${focusedIndex}"]`)?.focus({ preventScroll: true });
 }
 
 function updateDrawEntry() {
@@ -1701,6 +1791,7 @@ function cancelDrawAnimation() {
   inspection.classList.remove("is-card-summoning");
   resetCardTransitionState();
   readingResult = snapshot.result;
+  controls.enabled = snapshot.mode !== "browse" && !(snapshot.mode === "cards" && readingResult);
   cardRevealComplete = snapshot.revealComplete;
   selectedCard = snapshot.index;
   if (activeMode !== snapshot.mode) setMode(snapshot.mode, false);
@@ -1722,7 +1813,8 @@ function cancelDrawAnimation() {
   inspection.dataset.woodlandPhase = woodlandPhase;
   if (snapshot.phase === WOODLAND_PHASE.INNER_READY) inspection.classList.add("is-inner-box-ready");
   selectedFlipped = snapshot.flipped;
-  if (snapshot.mode === "cards") requestCardTextureWindow(selectedCard);
+  if (snapshot.result) readingEntries(snapshot.result).forEach((entry) => { void ensureCardTexture(entry.index); });
+  else if (snapshot.mode === "cards") requestCardTextureWindow(selectedCard);
   inspection.dataset.cardFace = selectedFlipped ? "back" : "front";
   flipCardButton.querySelector("span").textContent = selectedFlipped ? "翻至正面" : "翻至背面";
   updateSelectedCardInfo();
@@ -1758,14 +1850,14 @@ function initializeDrawRitual() {
       const active = value !== "idle";
       if (active) inspection.dataset.ritualPhase = value;
       else delete inspection.dataset.ritualPhase;
-      inspection.querySelectorAll(".artifact-copy, .mode-tabs, #box-controls, #card-controls").forEach((element) => { element.inert = active; });
-      controls.enabled = !active && activeMode !== "browse";
-      renderer.domElement.tabIndex = value === "selecting" ? 0 : -1;
-      renderer.domElement.setAttribute("aria-label", value === "selecting" ? "立體牌背選擇：左右鍵移動，Enter 選牌" : "3D 牌盒與卡牌展示");
+      inspection.querySelectorAll(".artifact-copy, .mode-tabs, #box-controls, #card-controls, #spread-result").forEach((element) => { element.inert = active; });
+      controls.enabled = !active && activeMode !== "browse" && !(activeMode === "cards" && readingResult);
+      renderer.domElement.tabIndex = ["cutting", "selecting"].includes(value) ? 0 : -1;
+      renderer.domElement.setAttribute("aria-label", ["cutting", "selecting"].includes(value) ? "立體牌背選擇：左右鍵移動，Enter 切牌或選牌" : "3D 牌盒與卡牌展示");
       if (!active) {
         ritualPointer = null;
         ritualMotion.hover = -1;
-        cardMeshes.forEach((card) => { card.visible = true; card.rotation.x = 0; });
+        cardMeshes.forEach((card) => { card.visible = !readingResult || readingEntries().some((entry) => entry.index === card.userData.cardIndex); card.rotation.x = 0; });
         renderer.domElement.style.cursor = "grab";
         ritualEffects.setState({ phase: "idle" });
       }
@@ -1788,6 +1880,10 @@ function initializeDrawRitual() {
       cardMeshes.forEach((card, index) => {
         card.userData.ritualPosition = positions.get(index) ?? -1;
         card.rotation.set(0, Math.PI, 0);
+        card.userData.frontSurface.rotation.z = 0;
+        card.userData.frontReflection.rotation.z = 0;
+        card.userData.frontMaterial.map = textures[`${activeDeckKey}:${DECKS[activeDeckKey].cardBack}`];
+        card.userData.frontMaterial.needsUpdate = true;
       });
       artifactTargetScale = 0.6;
       artifactTargetPosition.set(0, -1.12, -0.8);
@@ -1796,14 +1892,18 @@ function initializeDrawRitual() {
       playInvocationSound();
       drawRitual.animationComplete();
     },
-    async prepareSelection(index, session) {
+    orderChanged(session) {
+      const positions = new Map(session.order.map((index, position) => [index, position]));
+      cardMeshes.forEach((card, index) => { card.userData.ritualPosition = positions.get(index) ?? -1; });
+    },
+    async prepareSelection(indices, session) {
       if (!inspectionVisible || activeDeckKey !== session.deckKey || drawRitual.session !== session) throw new Error("Draw cancelled");
-      const texture = await ensureCardTexture(index);
-      if (!texture || activeDeckKey !== session.deckKey || drawRitual.session !== session) throw new Error("Card unavailable");
+      const prepared = await Promise.all(indices.map((index) => ensureCardTexture(index)));
+      if (prepared.some((texture) => !texture) || activeDeckKey !== session.deckKey || drawRitual.session !== session) throw new Error("Card unavailable");
     },
     commitSelection(index, session) {
       if (!inspectionVisible || activeDeckKey !== session.deckKey || drawRitual.session !== session) return;
-      readingResult = { index, session };
+      readingResult = { index, session, detail: null };
       cardRevealComplete = true;
       cardSummonAssetsReady = true;
       selectCard(index, false);
@@ -1856,7 +1956,12 @@ async function flipSelectedCard() {
   inspection.dataset.cardFace = selectedFlipped ? "back" : "front";
   flipCardButton.querySelector("span").textContent = selectedFlipped ? "翻至正面" : "翻至背面";
   updateSelectedCardInfo();
-  if (readingResult && !selectedFlipped) markDrawRevealed(readingResult.session);
+  if (readingResult) {
+    const entry = readingEntries().find((item) => item.index === selectedCard);
+    if (!selectedFlipped) markDrawRevealed(readingResult.session, selectedCard);
+    entry.faceUp = !selectedFlipped;
+    assignCardFaceTexture(selectedCard, cardTexturePool.get(selectedCard)?.texture);
+  }
   updateReadingResult();
   triggerMysticEffect(0.12);
   playCardFlip(selectedFlipped ? 1 : -1);
@@ -2940,6 +3045,8 @@ function createRoundedCard(faceTexture, backTexture, index) {
 
   const frontReflectionMaterial = createCardReflectionMaterial(index);
   const frontReflection = new THREE.Mesh(planeGeometry.clone(), frontReflectionMaterial);
+  group.userData.frontSurface = front;
+  group.userData.frontReflection = frontReflection;
   frontReflection.position.z = thickness / 2 + 0.0025;
   frontReflection.renderOrder = 4;
   group.add(frontReflection);
@@ -2972,6 +3079,9 @@ function isCardTextureReady(index) {
 
 function assignCardFaceTexture(index, texture) {
   const material = cardMeshes[index]?.userData.frontMaterial;
+  const entry = readingEntries().find((item) => item.index === index);
+  const concealed = (drawRitual?.isOpen && drawRitual.visual.phase !== "setup") || (readingResult && !entry?.revealed);
+  if (concealed) texture = textures[`${cardCatalogDeckKey}:${DECKS[cardCatalogDeckKey]?.cardBack}`];
   if (!material || !texture) return;
   material.map = texture;
   material.needsUpdate = true;
@@ -2981,8 +3091,12 @@ function protectedCardTextureIndices(centerIndex) {
   const protectedIndices = new Set();
   if (!CARDS.length) return protectedIndices;
   // Keep a revealed result available while preparing a new draw, including cancellation.
-  if (readingResult) protectedIndices.add(readingResult.index);
-  if (drawRestoreState?.result) protectedIndices.add(drawRestoreState.index);
+  readingEntries().forEach((entry) => protectedIndices.add(entry.index));
+  readingEntries(drawRestoreState?.result ?? null).forEach((entry) => protectedIndices.add(entry.index));
+  if (drawRitual?.isOpen && drawRitual.session) {
+    const session = drawRitual.session;
+    [...session.draws, ...(session.cut ? [session.cut] : [])].forEach((entry) => protectedIndices.add(entry.index));
+  }
   for (let offset = -2; offset <= 2; offset += 1) {
     protectedIndices.add((centerIndex + offset + CARDS.length) % CARDS.length);
   }
@@ -2991,7 +3105,8 @@ function protectedCardTextureIndices(centerIndex) {
 
 function trimCardTexturePool(centerIndex = selectedCard) {
   const protectedIndices = protectedCardTextureIndices(centerIndex);
-  while (cardTexturePool.size > CARD_TEXTURE_POOL_LIMIT) {
+  const limit = Math.max(CARD_TEXTURE_POOL_LIMIT, protectedIndices.size);
+  while (cardTexturePool.size > limit) {
     const candidate = [...cardTexturePool.entries()]
       .filter(([index]) => !protectedIndices.has(index))
       .sort((a, b) => a[1].lastUsed - b[1].lastUsed)[0];
@@ -3001,7 +3116,7 @@ function trimCardTexturePool(centerIndex = selectedCard) {
     assignCardFaceTexture(index, textures[`${cardCatalogDeckKey}:${DECKS[cardCatalogDeckKey]?.cardBack}`]);
     entry.texture.dispose();
   }
-  inspection.dataset.texturePool = `${cardTexturePool.size}/${CARD_TEXTURE_POOL_LIMIT}`;
+  inspection.dataset.texturePool = `${cardTexturePool.size}/${limit}`;
 }
 
 async function ensureCardTexture(index) {
@@ -3475,6 +3590,7 @@ function beginDeckReturn() {
     position: card.position.clone(),
     scale: card.scale.clone(),
     rotation: card.rotation.clone(),
+    visible: card.visible,
   }));
   setDeckReturnStage("cards-to-light", now);
   woodlandPhase = WOODLAND_PHASE.RETURNING;
@@ -3522,6 +3638,7 @@ function enterBoxModeDuringReturn(now) {
 
 function finishDeckReturn() {
   cardsGroup.visible = false;
+  controls.enabled = true;
   cardRevealComplete = !isBookDeck(activeDeckKey) && DECKS[activeDeckKey].hasCards;
   artifactBrightnessTarget = 1;
   artifactTargetScale = 1;
@@ -3584,12 +3701,18 @@ function updateCardTransitions(now) {
 renderer.domElement.addEventListener("click", (event) => {
   if (!inspectionVisible || drawRitual?.isOpen || activeMode !== "cards" || isCardTransitionActive()) return;
   setPointerFromEvent(event);
-  const hit = raycaster.intersectObjects(cardMeshes, true)[0];
+  const hit = raycaster.intersectObjects(cardMeshes.filter((card) => card.visible), true)[0];
   if (!hit) return;
   let cardRoot = hit.object;
   while (cardRoot.parent !== cardsGroup && cardRoot.parent) cardRoot = cardRoot.parent;
   const index = cardRoot.userData.cardIndex;
-  if (index === selectedCard) flipSelectedCard();
+  if (readingResult) {
+    const entry = readingEntries().find((item) => item.index === index);
+    if (!entry) return;
+    focusReadingCard(index, entry.faceUp);
+    if (!entry.faceUp) void flipSelectedCard();
+  }
+  else if (index === selectedCard) flipSelectedCard();
   else if (!readingResult) selectCard(index);
 });
 
@@ -3655,13 +3778,17 @@ function pickRitualPosition(event) {
   return card.userData.ritualPosition ?? -1;
 }
 
+function isRitualChoosing() {
+  return drawRitual?.isOpen && ["cutting", "selecting"].includes(drawRitual.visual.phase);
+}
+
 renderer.domElement.addEventListener("pointerdown", (event) => {
-  if (drawRitual?.visual.phase !== "selecting" || event.button !== 0) return;
+  if (!isRitualChoosing() || event.button !== 0) return;
   ritualPointer = { id: event.pointerId, x: event.clientX, focus: drawRitual.visual.focus, moved: false };
   renderer.domElement.setPointerCapture(event.pointerId);
 });
 renderer.domElement.addEventListener("pointermove", (event) => {
-  if (drawRitual?.visual.phase !== "selecting") return;
+  if (!isRitualChoosing()) return;
   if (ritualPointer?.id === event.pointerId) {
     const delta = event.clientX - ritualPointer.x;
     if (Math.abs(delta) > 7) ritualPointer.moved = true;
@@ -3682,24 +3809,24 @@ for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
 }
 renderer.domElement.addEventListener("pointerleave", () => { ritualMotion.hover = -1; });
 renderer.domElement.addEventListener("click", (event) => {
-  if (drawRitual?.visual.phase !== "selecting") return;
+  if (!isRitualChoosing()) return;
   const position = pickRitualPosition(event);
   if (position >= 0) drawRitual.choose(position);
 });
 renderer.domElement.addEventListener("wheel", (event) => {
-  if (drawRitual?.visual.phase !== "selecting") return;
+  if (!isRitualChoosing()) return;
   event.preventDefault();
   const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
   if (delta) drawRitual.focusChoice(drawRitual.visual.focus + Math.sign(delta), false);
 }, { passive: false });
 renderer.domElement.addEventListener("keydown", (event) => {
-  if (drawRitual?.visual.phase !== "selecting") return;
+  if (!isRitualChoosing()) return;
   const focus = drawRitual.visual.focus;
   if (event.key === "ArrowLeft") drawRitual.focusChoice(focus - 1, false);
   else if (event.key === "ArrowRight") drawRitual.focusChoice(focus + 1, false);
   else if (event.key === "Home") drawRitual.focusChoice(0, false);
   else if (event.key === "End") drawRitual.focusChoice(drawRitual.session.order.length - 1, false);
-  else if (event.key === "Enter" || event.key === " ") drawRitual.choose(focus);
+  else if (event.key === "Enter" || event.key === " ") { if (!event.repeat) drawRitual.choose(focus); }
   else return;
   event.preventDefault();
 });
@@ -3747,12 +3874,17 @@ function updateCards(dt, time) {
     updateRitualCards(dt, time);
     return;
   }
+  if (readingResult && !isCardTransitionActive()) {
+    updateReadingCards(dt, time);
+    return;
+  }
   const returningCards = deckReturnStartedAt > 0 && deckReturnStage === "cards-to-light";
   const redrawing = cardRedrawStartedAt > 0;
   cardMeshes.forEach((card, index) => {
     const isSelected = index === selectedCard;
     if (returningCards) {
       const origin = returnCardOrigins[index];
+      card.visible = origin.visible;
       const progress = deckReturnProgress * deckReturnProgress * (3 - 2 * deckReturnProgress);
       card.position.lerpVectors(origin.position, returnBeamCenter, progress);
       card.position.y += Math.sin(progress * Math.PI) * 1.08;
@@ -3768,6 +3900,7 @@ function updateCards(dt, time) {
       returnBeamPositions[offset + 3] = card.position.x;
       returnBeamPositions[offset + 4] = card.position.y + (0.82 + (1 - progress) * 0.72);
       returnBeamPositions[offset + 5] = card.position.z;
+      if (!origin.visible) returnBeamPositions.fill(0, offset, offset + 6);
     } else if (redrawing && !deckCarouselReducedMotion.matches) {
       const angle = index / CARDS.length * Math.PI * 2 + cardRedrawProgress * Math.PI * 4;
       const radius = 1.22 + Math.sin(cardRedrawProgress * Math.PI) * 0.48;
@@ -3784,6 +3917,9 @@ function updateCards(dt, time) {
       card.rotation.z = THREE.MathUtils.damp(card.rotation.z, angle + Math.PI * 0.5, 9, dt);
       card.rotation.y = THREE.MathUtils.damp(card.rotation.y, Math.PI, 9, dt);
     } else {
+      card.visible = true;
+      card.userData.frontSurface.rotation.z = 0;
+      card.userData.frontReflection.rotation.z = 0;
       const relative = index - selectedCard;
       const spreadX = isSelected ? 0 : THREE.MathUtils.clamp(relative, -3, 3) * 0.52;
       const spreadY = isSelected ? 0.1 : -0.38 - Math.abs(relative) * 0.055;
@@ -3820,11 +3956,13 @@ function updateCards(dt, time) {
 
 function updateRitualCards(dt, time) {
   const state = drawRitual.visual;
+  const session = drawRitual.session;
+  const spread = getDrawSpread(session.spreadId);
   ritualMotion.energy = THREE.MathUtils.damp(ritualMotion.energy, state.holding ? 1 : 0.05, 3.5, dt);
   ritualMotion.clock += dt * (0.12 + ritualMotion.energy * 1.55);
   ritualMotion.focus = THREE.MathUtils.damp(ritualMotion.focus, state.focus, 9, dt);
   Object.assign(ritualPoseOptions, {
-    phase: state.phase, count: drawRitual.session.order.length, time: ritualMotion.clock,
+    phase: state.phase === "cutting" ? "selecting" : state.phase, count: session.order.length, time: ritualMotion.clock,
     energy: ritualMotion.energy, progress: (performance.now() - state.phaseStartedAt) / 1150,
     focus: ritualMotion.focus, selectedPosition: state.selectedPosition, aspect: camera.aspect,
     reducedMotion: deckCarouselReducedMotion.matches,
@@ -3832,9 +3970,16 @@ function updateRitualCards(dt, time) {
   for (const card of cardMeshes) {
     ritualPoseOptions.position = card.userData.ritualPosition;
     const pose = getRitualCardPose(ritualPoseOptions, ritualPose);
+    const cut = session.cut?.index === card.userData.cardIndex;
+    const slot = session.draws.findIndex((entry) => entry.index === card.userData.cardIndex);
+    if (cut || (slot >= 0 && state.phase === "revealing")) {
+      getReadingCardPose({ spread, slot: Math.max(0, slot), aspect: camera.aspect, cut }, pose);
+    } else if (slot >= 0) {
+      Object.assign(pose, { x: (slot - (session.drawCount - 1) / 2) * Math.min(0.14, camera.aspect * 0.22), y: -0.94, z: 1.05, rx: 0, ry: Math.PI, rz: 0, scale: 0.2, visible: true });
+    }
     card.visible = pose.visible;
     if (!pose.visible) continue;
-    const hovered = state.phase === "selecting" && card.userData.ritualPosition === ritualMotion.hover;
+    const hovered = isRitualChoosing() && !cut && slot < 0 && card.userData.ritualPosition === ritualMotion.hover;
     const speed = deckCarouselReducedMotion.matches ? 1000 : 9;
     card.position.x = THREE.MathUtils.damp(card.position.x, pose.x, speed, dt);
     card.position.y = THREE.MathUtils.damp(card.position.y, pose.y + (hovered ? 0.13 : 0), speed, dt);
@@ -3847,6 +3992,48 @@ function updateRitualCards(dt, time) {
       material.uniforms.uSweep.value = deckCarouselReducedMotion.matches ? 0.5 : (time * 0.28 + card.userData.ritualPosition * 0.09) % 1.38 - 0.16;
       material.uniforms.uOpacity.value = hovered ? 1.4 : 0.65 + ritualMotion.energy * 0.6;
     });
+  }
+}
+
+function updateReadingCards(dt, time) {
+  const { session, detail } = readingResult;
+  const spread = getDrawSpread(session.spreadId);
+  const entries = readingEntries();
+  for (const card of cardMeshes) {
+    const entry = entries.find((item) => item.index === card.userData.cardIndex);
+    const cut = entry && entry === session.cut;
+    card.visible = Boolean(entry) && (detail === null || cut || entry.index === detail);
+    if (!card.visible) continue;
+    const slot = session.draws.indexOf(entry);
+    getReadingCardPose({ spread, slot: Math.max(0, slot), aspect: camera.aspect, cut, detail: detail === entry.index, faceUp: entry.faceUp }, ritualPose);
+    const speed = deckCarouselReducedMotion.matches ? 1000 : 9;
+    card.position.x = THREE.MathUtils.damp(card.position.x, ritualPose.x, speed, dt);
+    card.position.y = THREE.MathUtils.damp(card.position.y, ritualPose.y, speed, dt);
+    card.position.z = THREE.MathUtils.damp(card.position.z, ritualPose.z, speed, dt);
+    card.rotation.x = THREE.MathUtils.damp(card.rotation.x, 0, speed, dt);
+    card.rotation.y = THREE.MathUtils.damp(card.rotation.y, ritualPose.ry, speed, dt);
+    card.rotation.z = THREE.MathUtils.damp(card.rotation.z, 0, speed, dt);
+    card.scale.setScalar(THREE.MathUtils.damp(card.scale.x, ritualPose.scale, speed, dt));
+    // The back stays direction-neutral; only the original front surface is reversed.
+    card.userData.frontSurface.rotation.z = entry.reversed ? Math.PI : 0;
+    card.userData.frontReflection.rotation.z = entry.reversed ? Math.PI : 0;
+    card.userData.reflectionMaterials.forEach((material) => {
+      material.uniforms.uSweep.value = deckCarouselReducedMotion.matches ? 0.5 : (time * 0.12) % 1.38 - 0.16;
+      material.uniforms.uOpacity.value = card.userData.cardIndex === selectedCard ? 0.8 : 0.4;
+    });
+  }
+  const stageBounds = stage.getBoundingClientRect();
+  const labelBounds = document.querySelector("#spread-result").getBoundingClientRect();
+  for (const label of document.querySelectorAll(".spread-card-label")) {
+    const card = cardMeshes[Number(label.dataset.readingIndex)];
+    label.hidden = !card?.visible;
+    if (!card?.visible) continue;
+    card.getWorldPosition(readingLabelPoint);
+    readingLabelPoint.y -= card.scale.y * 0.56;
+    readingLabelPoint.project(camera);
+    label.style.left = `${stageBounds.left - labelBounds.left + (readingLabelPoint.x + 1) * 0.5 * stageBounds.width}px`;
+    label.style.top = `${stageBounds.top - labelBounds.top + (1 - readingLabelPoint.y) * 0.5 * stageBounds.height}px`;
+    label.style.width = `${detail === card.userData.cardIndex ? 225 : Math.max(45, Math.min(120, card.scale.x * 0.78 * stage.clientHeight / 3.3))}px`;
   }
 }
 
@@ -3934,7 +4121,7 @@ function updateArtifactPresentation(dt) {
 
 
 function updateCardFocus(dt, time) {
-  const cardActive = inspectionVisible && !drawRitual?.isOpen && activeMode === "cards" && cardsGroup.visible && !isCardTransitionActive();
+  const cardActive = inspectionVisible && !drawRitual?.isOpen && !readingResult && activeMode === "cards" && cardsGroup.visible && !isCardTransitionActive();
   const selected = cardMeshes[selectedCard];
   let frontFacing = 1;
   if (selected) {
@@ -4051,7 +4238,7 @@ function animate(now) {
   if (drawRitual?.isOpen) {
     const visual = drawRitual.visual;
     const effectProgress = visual.phase === "revealing" ? Math.min(1, (now - visual.phaseStartedAt) / 1150) : visual.progress;
-    ritualEffects.setState({ phase: visual.phase, progress: effectProgress, holding: visual.holding, aspect: camera.aspect });
+    ritualEffects.setState({ phase: visual.phase === "cutting" ? "selecting" : visual.phase, progress: effectProgress, holding: visual.holding, aspect: camera.aspect });
   }
   ritualEffects.update(dt, time);
   updateCameraTween(now);

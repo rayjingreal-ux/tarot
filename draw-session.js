@@ -100,7 +100,7 @@ function sessionState(session) {
 }
 
 /**
- * Creates a single-card draw session without depending on DOM or rendering state.
+ * Creates a draw session without depending on DOM or rendering state.
  * `order` contains indices into the supplied `cards` array.
  */
 export function createDrawSession({
@@ -108,6 +108,9 @@ export function createDrawSession({
   cards,
   method = "manual",
   question = "",
+  drawCount = 1,
+  spreadId = "single",
+  requireCut = false,
   random = Math.random,
 } = {}) {
   const normalizedDeckKey = requiredText(deckKey, "deckKey");
@@ -173,6 +176,12 @@ export function createDrawSession({
     [order[index], order[swapIndex]] = [order[swapIndex], order[index]];
   }
 
+  if (!Number.isInteger(drawCount) || drawCount < 1 || drawCount > order.length - Number(requireCut)) {
+    throw new RangeError("drawCount must fit the available cards, leaving one card for cutting when required.");
+  }
+  // Each card gets an independent random orientation, never a quota for the spread.
+  const orientations = new Map(order.map((index) => [index, randomUnit(random) < 0.5]));
+
   const session = {
     deckKey: normalizedDeckKey,
     method,
@@ -181,55 +190,78 @@ export function createDrawSession({
     order,
     selectedIndex: null,
     selectedId: null,
+    drawCount, spreadId, requireCut: Boolean(requireCut), cut: null, draws: [],
   };
 
   SESSION_STATE.set(session, {
     cardsByIndex,
     selectedPosition: null,
+    pickedPositions: new Set(), orientations,
   });
 
   return session;
 }
 
-/** Selects one shuffled position and locks the session to that card. */
+function selectedEntry(session, state, position) {
+  if (!Number.isInteger(position)) throw new TypeError("position must be an integer.");
+  if (position < 0 || position >= session.order.length) throw new RangeError("position is outside the shuffled draw order.");
+  const index = session.order[position];
+  const card = state.cardsByIndex.get(index);
+  if (!card) throw new RangeError("The selected position does not point to a valid catalog index.");
+  return { ...card, position, reversed: state.orientations.get(index), revealed: false, faceUp: false };
+}
+
+/** Rotate at the chosen cut, retaining that card separately from the main draw. */
+export function cutDrawDeck(session, position) {
+  const state = sessionState(session);
+  if (session.phase !== "cutting" || session.cut || session.draws.length) throw new Error("Cutting is only allowed once before drawing.");
+  const cut = selectedEntry(session, state, position);
+  session.cut = cut;
+  session.order = [...session.order.slice(position + 1), ...session.order.slice(0, position)];
+  session.phase = "selecting";
+  return cut;
+}
+
+export function availableDrawPositions(session) {
+  const state = sessionState(session);
+  return session.order.map((_, position) => position).filter((position) => !state.pickedPositions.has(position));
+}
+
+/** Select one unused shuffled position, retaining draw order rather than catalog order. */
 export function pickDrawCard(session, position) {
   const state = sessionState(session);
 
   if (session.phase !== "selecting") {
     throw new Error('Cards can only be selected while session.phase is "selecting".');
   }
-  if (state.selectedPosition !== null || session.selectedIndex !== null || session.selectedId !== null) {
+  if (session.requireCut && !session.cut) throw new Error("The deck must be cut before drawing.");
+  if (session.draws.length >= session.drawCount) {
     throw new Error("This draw session already has a selected card.");
   }
-  if (!Number.isInteger(position)) {
-    throw new TypeError("position must be an integer.");
-  }
-  if (position < 0 || position >= session.order.length) {
-    throw new RangeError("position is outside the shuffled draw order.");
-  }
-
-  const index = session.order[position];
-  const card = state.cardsByIndex.get(index);
-  if (!card) {
-    throw new RangeError("The selected position does not point to a valid catalog index.");
-  }
+  const card = selectedEntry(session, state, position);
+  if (state.pickedPositions.has(position)) throw new Error("This card has already been selected.");
+  const index = card.index;
 
   state.selectedPosition = position;
-  session.selectedIndex = index;
-  session.selectedId = card.id;
-  session.canonicalId = card.canonicalId;
-  session.phase = "revealing";
+  state.pickedPositions.add(position);
+  session.draws.push(card);
+  if (session.selectedIndex === null) {
+    session.selectedIndex = index;
+    session.selectedId = card.id;
+    session.canonicalId = card.canonicalId;
+  }
+  if (session.draws.length === session.drawCount) session.phase = "revealing";
 
   return index;
 }
 
 /** Selects the first card in the already-shuffled draw order. */
 export function autoPickDrawCard(session) {
-  return pickDrawCard(session, 0);
+  return pickDrawCard(session, availableDrawPositions(session)[0]);
 }
 
 /** Marks a revealed draw complete. Completing an already-complete draw is harmless. */
-export function markDrawRevealed(session) {
+export function markDrawRevealed(session, index = null) {
   sessionState(session);
 
   if (session.phase === "complete") return session;
@@ -237,6 +269,10 @@ export function markDrawRevealed(session) {
     throw new Error('A draw can only be completed while session.phase is "revealing".');
   }
 
-  session.phase = "complete";
+  const entries = [...session.draws, ...(session.cut ? [session.cut] : [])];
+  const targets = index === null ? entries : entries.filter((entry) => entry.index === index);
+  if (!targets.length) throw new RangeError("Card is not part of this reading.");
+  targets.forEach((entry) => { entry.revealed = true; entry.faceUp = true; });
+  if (entries.every((entry) => entry.revealed)) session.phase = "complete";
   return session;
 }

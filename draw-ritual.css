@@ -8,6 +8,59 @@
   --draw-line: rgba(224, 194, 132, 0.34);
 }
 
+/* Extend the existing transparent stage, without introducing a modal frame. */
+#draw-spread-setup { margin-bottom: 22px; pointer-events: auto; }
+#draw-spread-setup label { display: block; margin-bottom: 8px; color: var(--draw-gold-bright); font-size: 1rem; }
+#draw-spread { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid var(--draw-line); background: #0b1412; color: var(--draw-ink); font-size: 1rem; border-radius: 4px; }
+#draw-spread:focus-visible { outline: 2px solid var(--draw-gold-bright); outline-offset: 3px; }
+#draw-spread-description, .draw-cut-note { margin: 9px 0; color: #c7c1b6; font-size: .875rem; line-height: 1.55; }
+#draw-spread-preview { position: relative; height: 138px; margin: 12px 0; }
+#draw-spread-preview span { position: absolute; display: grid; place-items: center; width: 27px; height: 40px; transform: translate(-50%, -50%); border: 1px solid #d8b76f; border-radius: 3px; color: #f4dda4; background: #15211c; font-size: .875rem; }
+#spread-result { position: absolute; z-index: 4; inset: 0; pointer-events: none; color: var(--draw-ink); }
+#spread-result[hidden], #spread-result [hidden] { display: none !important; }
+#spread-result > header { position: absolute; top: 95px; left: 20%; right: 20%; text-align: center; text-shadow: 0 2px 12px #000; }
+#spread-result-title { margin: 7px 0; font: 400 clamp(25px, 3vw, 38px)/1.2 var(--serif); }
+#spread-result-summary { margin: 0; font-size: .875rem; color: #d6c7a8; }
+.inspection[data-reading-active="true"] .artifact-copy { opacity: 0; visibility: hidden; pointer-events: none; }
+.inspection[data-ritual-phase] #spread-result { visibility: hidden; pointer-events: none; }
+.spread-card-label { position: absolute; width: 110px; transform: translateX(-50%); text-align: center; text-shadow: 0 2px 8px #000; line-height: 1.25; }
+.spread-card-label strong, .spread-card-label span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.spread-card-label strong { font-weight: 500; color: #f5deb0; }
+.spread-card-label span { color: #cbc4b6; margin-top: 2px; }
+.spread-card-label.is-cut strong { color: #a6ddc5; }
+.reading-card-list { position: absolute; bottom: 22px; left: 23%; right: 345px; display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; pointer-events: auto; }
+.reading-card-list button { min-width: 34px; min-height: 38px; padding: 6px; border: 1px solid #806e4c; border-radius: 4px; background: #09110ee6; color: #ead6aa; cursor: pointer; font-size: .875rem; }
+.reading-card-list button[aria-pressed="true"] { border-color: #f4dda4; background: #334133; }
+.reading-card-list button:focus-visible { outline: 2px solid #f4dda4; outline-offset: 2px; }
+.inspection[data-reading-active="true"] #card-controls { width: 300px; max-height: 165px; overflow: auto; padding: 12px; }
+.inspection[data-reading-active="true"] .selected-card-title { min-height: 35px; }
+.inspection[data-reading-active="true"] .reading-result-strip { margin-top: 7px; padding: 6px; gap: 3px; }
+.inspection[data-reading-active="true"] #reading-question { display: none; }
+.inspection[data-reading-active="true"] .deck-flow-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.inspection[data-reading-active="true"] .deck-flow-actions button { min-height: 35px; padding: 5px; }
+.inspection[data-reading-active="true"] .deck-flow-actions small { display: none; }
+.inspection[data-reading-active="true"] .interaction-hint { display: none; }
+@media (max-width: 680px) {
+  #spread-result > header { top: 102px; left: 12px; right: 12px; }
+  #spread-result-summary { font-size: 12px; }
+  #spread-result-title { font-size: 25px; }
+  .inspection[data-reading-active="true"] #card-controls { left: 125px; right: 8px; bottom: 8px; width: auto; max-height: 158px; padding: 8px; }
+  .inspection[data-reading-active="true"] .selected-card-title { min-height: 32px; padding-right: 0; }
+  .inspection[data-reading-active="true"] .card-actions { position: static; justify-content: flex-end; margin-top: 3px; }
+  .inspection[data-reading-active="true"] .reading-result-strip { display: block; margin: 3px 0; padding: 3px; }
+  .inspection[data-reading-active="true"] #reading-method { display: none; }
+  .inspection[data-reading-active="true"] #reading-result-status { display: block; text-align: left; font-size: 12px; }
+  .inspection[data-reading-active="true"] .deck-flow-actions button { font-size: 12px; min-height: 32px; }
+  .reading-card-list { left: 10px; right: 10px; bottom: 177px; gap: 3px; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: thin; }
+  .reading-card-list button { min-width: 30px; min-height: 32px; flex-shrink: 0; }
+}
+@media (max-height: 560px) {
+  #spread-result > header { top: 88px; }
+  #spread-result-summary { display: none; }
+  #spread-result-title { margin: 0; font-size: 24px; }
+  .reading-card-list { bottom: 7px; }
+}
+
 .ritual-step-button {
   width: 100%;
   min-height: 46px;

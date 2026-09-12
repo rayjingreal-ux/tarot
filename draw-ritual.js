@@ -1,4 +1,5 @@
-import { createDrawSession, pickDrawCard, autoPickDrawCard } from "./draw-session.js?v=20260912-01";
+import { createDrawSession, pickDrawCard, autoPickDrawCard, cutDrawDeck, availableDrawPositions } from "./draw-session.js?v=20260913-01";
+import { DRAW_SPREADS, getDrawSpread } from "./draw-spreads.js?v=20260913-01";
 
 // Transparent stage HUD; the adapter animates and picks real cards in the existing Three.js scene.
 export function createDrawRitual(adapter) {
@@ -15,6 +16,30 @@ export function createDrawRitual(adapter) {
   const error = find("draw-error");
   const retry = find("draw-retry");
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  const spreadSelect = find("draw-spread");
+  DRAW_SPREADS.forEach((spread) => {
+    const option = document.createElement("option");
+    option.value = spread.id;
+    option.textContent = `${spread.name} · ${spread.count} 張`;
+    spreadSelect.append(option);
+  });
+  function updateSpreadPreview() {
+    const layout = getDrawSpread(spreadSelect.value);
+    find("draw-spread-description").textContent = `${layout.count} 張主牌 ＋ 1 張切牌 · ${layout.description}`;
+    const preview = find("draw-spread-preview");
+    preview.replaceChildren();
+    const xs = layout.slots.map((slot) => slot.x), ys = layout.slots.map((slot) => slot.y);
+    const width = Math.max(...xs) - Math.min(...xs) + 1, height = Math.max(...ys) - Math.min(...ys) + 1;
+    layout.slots.forEach((slot, index) => {
+      const item = document.createElement("span");
+      item.textContent = String(index + 1);
+      item.style.left = `${(slot.x - Math.min(...xs) + 0.5) / width * 100}%`;
+      item.style.top = `${(slot.y - Math.min(...ys) + 0.5) / height * 100}%`;
+      preview.append(item);
+    });
+  }
+  spreadSelect.addEventListener("change", updateSpreadPreview);
+  updateSpreadPreview();
   const visual = { phase: "idle", progress: 0, holding: false, focus: 0, selectedPosition: -1, phaseStartedAt: 0 };
   const shuffleDuration = 2400;
   let session = null;
@@ -34,6 +59,7 @@ export function createDrawRitual(adapter) {
   let context = null;
   let drag = null;
   let suppressClickUntil = 0;
+  let chooseReadyAt = 0;
 
   function phase(value, heading, instruction) {
     visual.phase = value;
@@ -41,7 +67,7 @@ export function createDrawRitual(adapter) {
     surface.dataset.phase = value;
     adapter.phaseChanged?.(value);
     surface.querySelectorAll("[data-draw-panel]").forEach((panel) => {
-      panel.hidden = panel.dataset.drawPanel !== value;
+      panel.hidden = panel.dataset.drawPanel !== (value === "cutting" ? "selecting" : value);
     });
     title.textContent = heading;
     status.textContent = instruction;
@@ -85,7 +111,7 @@ export function createDrawRitual(adapter) {
       return;
     }
     if (amount === 100 && !sceneReady) status.textContent = "洗牌完成，牌組正在聚攏…";
-    else if (amount === 100) status.textContent = "讓牌停在此刻；展開後，挑一張與你呼應的牌。";
+    else if (amount === 100) status.textContent = "洗牌完成；接著先選擇切牌位置。";
   }
 
   function holdTick(now) {
@@ -111,12 +137,20 @@ export function createDrawRitual(adapter) {
   }
 
   function focusChoice(position, focusDOM = true) {
-    if (!session || session.phase !== "selecting") return;
+    if (!session || !["cutting", "selecting"].includes(session.phase)) return;
     const buttons = [...track.querySelectorAll(".draw-choice")];
-    const index = Math.max(0, Math.min(Math.round(position), buttons.length - 1));
+    const available = availableDrawPositions(session);
+    const requested = Math.max(0, Math.min(Math.round(position), buttons.length - 1));
+    const index = position < visual.focus
+      ? [...available].reverse().find((value) => value <= requested) ?? available[0]
+      : available.find((value) => value >= requested) ?? available.at(-1);
+    if (index === undefined) return;
     visual.focus = index;
     buttons.forEach((button, number) => { button.tabIndex = number === index ? 0 : -1; });
-    find("draw-selection-count").textContent = `第 ${index + 1} / ${buttons.length} 張 · 請選一張`;
+    const layout = getDrawSpread(session.spreadId);
+    find("draw-selection-count").textContent = session.phase === "cutting"
+      ? `切牌位置 ${index + 1} / ${buttons.length} · 切牌不計入主牌`
+      : `已選 ${session.draws.length} / ${session.drawCount} · 下一張：${layout.slots[session.draws.length]?.label ?? "完成"} · 位置 ${index + 1}`;
     if (focusDOM) buttons[index]?.focus({ preventScroll: true });
   }
 
@@ -137,7 +171,9 @@ export function createDrawRitual(adapter) {
       button.type = "button";
       button.className = "draw-choice";
       button.dataset.position = String(position);
-      button.setAttribute("aria-label", `選擇第 ${position + 1} 張牌背`);
+      const picked = session.draws.some((entry) => entry.position === position);
+      button.disabled = picked;
+      button.setAttribute("aria-label", `${session.phase === "cutting" ? "切牌位置" : "選擇牌背位置"} ${position + 1}${picked ? "，已選取" : ""}`);
       button.tabIndex = position === 0 ? 0 : -1;
       const number = document.createElement("span");
       number.textContent = String(position + 1).padStart(2, "0");
@@ -147,7 +183,7 @@ export function createDrawRitual(adapter) {
     });
     track.replaceChildren(fragment);
     track.scrollLeft = 0;
-    focusChoice(matchMedia("(max-width: 680px)").matches ? 2 : 4, false);
+    focusChoice(visual.focus || (matchMedia("(max-width: 680px)").matches ? 2 : 4), false);
   }
 
   async function deliverSelection() {
@@ -156,10 +192,10 @@ export function createDrawRitual(adapter) {
     const chosenSession = session;
     pending = true;
     clearError();
-    status.textContent = "已選定，正在將這張牌送往中央…";
+    status.textContent = "主牌已選齊，正在展開牌陣與切牌…";
     surface.setAttribute("aria-busy", "true");
     find("draw-auto-pick").disabled = true;
-    find("draw-selection-count").textContent = "1 / 1 · 已選定";
+    find("draw-selection-count").textContent = `${session.draws.length} / ${session.drawCount} · 已選定`;
     const slot = find("draw-slot");
     slot.replaceChildren();
     const card = document.createElement("span");
@@ -169,7 +205,7 @@ export function createDrawRitual(adapter) {
     slot.classList.add("is-filled");
     track.querySelectorAll(".draw-choice").forEach((button) => { button.disabled = true; });
     try {
-      await adapter.prepareSelection(chosenSession.selectedIndex, chosenSession);
+      await adapter.prepareSelection([...chosenSession.draws, chosenSession.cut].filter(Boolean).map((entry) => entry.index), chosenSession);
       if (token !== generation || surface.hidden) return;
       const remaining = reducedMotion.matches ? 0 : Math.max(0, 1150 - (performance.now() - visual.phaseStartedAt));
       if (remaining) await new Promise((resolve) => setTimeout(resolve, remaining));
@@ -181,21 +217,41 @@ export function createDrawRitual(adapter) {
       adapter.focusResult();
     } catch {
       if (token !== generation || surface.hidden) return;
-      showError("這張牌的牌面暫時無法載入。重試會保留同一張牌。", deliverSelection);
+      showError("部分牌面暫時無法載入。重試會保留這次切牌、抽牌與正逆位，不重新抽取。", deliverSelection);
     }
   }
 
   function choose(position = null) {
-    if (!session || session.phase !== "selecting" || pending) return;
+    if (!session || pending || !["cutting", "selecting"].includes(session.phase)) return;
+    if (!automatic && performance.now() < chooseReadyAt) return;
+    if (session.phase === "cutting") {
+      const cutPosition = position ?? Math.floor(Math.random() * session.order.length);
+      cutDrawDeck(session, cutPosition);
+      // Ignore the second tap of a cut double-click while shuffled positions rotate.
+      chooseReadyAt = performance.now() + 350;
+      visual.focus = 0;
+      adapter.orderChanged?.(session);
+      phase("selecting", "依照牌位，選出你的牌", `切牌已保留在左下角；請再抽 ${session.drawCount} 張主牌。`);
+      find("draw-auto-pick").textContent = "自動補齊主牌";
+      buildChoices();
+      if (automatic) choose();
+      else adapter.focusChoices?.();
+      return;
+    }
+    if (position !== null && !availableDrawPositions(session).includes(position)) return;
     if (position === null) {
       session.method = "starlight";
-      autoPickDrawCard(session);
+      while (session.phase === "selecting") autoPickDrawCard(session);
     }
     else pickDrawCard(session, position);
-    if (session.selectedIndex === null) return;
+    if (session.phase === "selecting") {
+      buildChoices();
+      adapter.focusChoices?.();
+      return;
+    }
     track.querySelector(`[data-position="${position ?? 0}"]`)?.classList.add("is-picked");
     visual.selectedPosition = position ?? 0;
-    phase("revealing", "這張牌，為你而來", "牌背正在靠近。稍後，親手翻開它。");
+    phase("revealing", "牌陣，正在成形", "主牌與切牌將一同呈現，等待你翻開。");
     find("draw-ritual-close").focus({ preventScroll: true });
     void deliverSelection();
   }
@@ -203,13 +259,12 @@ export function createDrawRitual(adapter) {
   function finishShuffle() {
     if (!sceneReady || !collectRequested || heldMs < shuffleDuration || !session || session.phase !== "shuffling") return;
     stopHold();
-    session.phase = "selecting";
-    phase("selecting", automatic ? "星光已為你留下一張牌" : "選一張與你呼應的牌", "在舞台上左右滑動，直接點選一張立體牌背。");
-    find("draw-selection-count").textContent = "0 / 1 · 待選取";
+    session.phase = "cutting";
+    phase("cutting", "先切牌，再抽牌", "左右滑動，點選你的切牌位置；切牌另留在左下角。" );
+    find("draw-auto-pick").textContent = "隨機切牌";
     find("draw-auto-pick").disabled = false;
     buildChoices();
-    if (automatic) choose();
-    else if (adapter.focusChoices) adapter.focusChoices();
+    if (adapter.focusChoices) adapter.focusChoices();
     else find("draw-cards-next").focus({ preventScroll: true });
   }
 
@@ -227,7 +282,8 @@ export function createDrawRitual(adapter) {
       if (!cards.length) throw new Error("Deck unavailable");
       lastQuestion = question.value.trim().slice(0, 200);
       lastMethod = surface.querySelector('input[name="draw-method"]:checked')?.value ?? "manual";
-      session = createDrawSession({ deckKey: context.deckKey, cards, method: lastMethod, question: lastQuestion });
+      const layout = getDrawSpread(spreadSelect.value);
+      session = createDrawSession({ deckKey: context.deckKey, cards, method: lastMethod, question: lastQuestion, drawCount: layout.count, spreadId: layout.id, requireCut: true });
       session.phase = "shuffling";
       automatic = lastMethod === "starlight";
       collectRequested = automatic;
@@ -281,6 +337,7 @@ export function createDrawRitual(adapter) {
     generation += 1;
     session = null;
     pending = false;
+    chooseReadyAt = 0;
     Object.assign(visual, { progress: 0, holding: false, focus: 0, selectedPosition: -1 });
     returnFocus = document.activeElement;
     context = adapter.getContext();
@@ -295,7 +352,7 @@ export function createDrawRitual(adapter) {
     find("draw-question-count").textContent = `${question.value.length} / 200`;
     surface.querySelectorAll('input[name="draw-method"]').forEach((input) => { input.checked = input.value === lastMethod; });
     find("draw-start").disabled = false;
-    phase("setup", "留一個問題，等一張回應", "單張牌 · 問題可留白，在心裡默念也可以。");
+    phase("setup", "選一個牌陣，留一個問題", "逐張隨機正逆位 · 先切牌，再抽出你的主牌。");
     surface.hidden = false;
     surface.setAttribute("aria-hidden", "false");
     surface.inert = false;
@@ -362,7 +419,7 @@ export function createDrawRitual(adapter) {
   });
   track.addEventListener("keydown", (event) => {
     const button = event.target.closest(".draw-choice");
-    if (!button || session?.phase !== "selecting") return;
+    if (!button || !["cutting", "selecting"].includes(session?.phase)) return;
     let index = Number(button.dataset.position);
     if (event.key === "ArrowLeft") index -= 1;
     else if (event.key === "ArrowRight") index += 1;
