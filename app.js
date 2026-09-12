@@ -6,6 +6,7 @@ import { createRitualEffects } from "./ritual-effects.js?v=20260913-02";
 import { getRitualCardPose } from "./ritual-layout.js?v=20260913-02";
 import { getDrawSpread, getReadingCardPose } from "./draw-spreads.js?v=20260913-01";
 import { createDeckTexturePlan, createDeckTextureCache, getTextureUrl } from "./texture-loading.js?v=20260913-02";
+import { fitReadingLayout, readingNameWidth } from "./reading-layout.js?v=20260913-03";
 
 
 const MAJOR_ARCANA = [
@@ -702,6 +703,13 @@ let ritualPointer = null;
 const ritualPose = {};
 const ritualPoseOptions = {};
 const readingLabelPoint = new THREE.Vector3();
+const readingProjectionPoint = new THREE.Vector3();
+let readingLayoutDirty = true;
+let readingScreenLayout = null;
+let readingScrollOffset = 0;
+let readingLayoutSession = null;
+let readingPan = null;
+const readingScroll = document.querySelector("#reading-scroll");
 let cameraTween = null;
 let invokeAge = 99;
 let shakeTrauma = 0;
@@ -923,14 +931,9 @@ cardCatalogToggle.addEventListener("click", () => {
   setCardCatalogOpen(cardCatalogToggle.getAttribute("aria-expanded") !== "true");
 });
 document.querySelector("#reveal-reading").addEventListener("click", revealReading);
-document.querySelector("#reading-overview").addEventListener("click", () => {
-  if (!readingResult || drawRitual?.isOpen) return;
-  readingResult.detail = null;
-  updateReadingResult();
-});
-document.querySelector("#reading-card-list").addEventListener("click", (event) => {
+document.querySelector("#spread-result-labels").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-reading-index]");
-  if (button) focusReadingCard(Number(button.dataset.readingIndex), true);
+  if (button) activateReadingCard(Number(button.dataset.readingIndex));
 });
 
 document.querySelectorAll("[data-browse-filter]").forEach((button) => {
@@ -954,7 +957,12 @@ window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") { event.preventDefault(); drawRitual.cancel(); }
     return;
   }
-  if (event.key === "Escape" && !browseViewer.open) { leaveInspection(); return; }
+  if (event.key === "Escape" && !browseViewer.open) {
+    if (readingResult?.detail != null) { event.preventDefault(); showReadingOverview(); }
+    else leaveInspection();
+    return;
+  }
+  if (event.target === readingScroll) return;
   if (event.target.closest?.('input, textarea, select, button, a, [contenteditable="true"]')) return;
   if (activeMode === "cards" && !isCardTransitionActive()) {
     if (!readingResult && event.key === "ArrowLeft") selectCard(selectedCard - 1);
@@ -1730,6 +1738,28 @@ function focusReadingCard(index, detail = false) {
   updateReadingResult();
 }
 
+function showReadingOverview() {
+  if (!readingResult || readingResult.detail === null || drawRitual?.isOpen || isCardTransitionActive()) return;
+  readingResult.detail = null;
+  updateReadingResult();
+}
+
+function activateReadingCard(index) {
+  if (!readingResult || drawRitual?.isOpen || isCardTransitionActive()) return;
+  const entry = readingEntries().find((item) => item.index === index);
+  if (!entry) return;
+  focusReadingCard(index, entry.faceUp);
+  if (!entry.faceUp) void flipSelectedCard();
+}
+
+function syncReadingArtifactVisibility() {
+  if (!artifactStageReady) return;
+  const showArtifact = !(readingResult && activeMode === "cards");
+  woodlandRoot.visible = showArtifact && isBookDeck(activeDeckKey);
+  unveiledRoot.visible = showArtifact && activeDeckKey === "unveiled";
+  plinth.visible = showArtifact;
+}
+
 async function revealReading() {
   const result = readingResult;
   if (!result || revealingResult === result || drawRitual?.isOpen || isCardTransitionActive()) return;
@@ -1773,6 +1803,11 @@ function updateSelectedCardInfo(loadingFace = false) {
 }
 
 function updateReadingResult() {
+  syncReadingArtifactVisibility();
+  readingLayoutDirty = true;
+  readingPan = null;
+  inspection.dataset.readingDetail = String(readingResult?.detail != null);
+  if (!readingResult) readingScroll.hidden = true;
   inspection.dataset.readingActive = String(Boolean(readingResult && activeMode === "cards"));
   const strip = document.querySelector("#reading-result-strip");
   if (!strip) return;
@@ -1780,39 +1815,32 @@ function updateReadingResult() {
   document.querySelector("#spread-result").hidden = !readingResult || activeMode !== "cards";
   document.querySelector("#reveal-reading").hidden = !readingResult;
   document.querySelector("#reveal-reading").disabled = Boolean(readingResult && revealingResult === readingResult);
-  document.querySelector("#reading-overview").hidden = !readingResult;
   if (!readingResult) return;
   const { session } = readingResult;
   const spread = getDrawSpread(session.spreadId);
   document.querySelector("#reading-method").textContent = `${session.method === "starlight" ? "迎接命運" : "手動選牌"} · ${spread.name}`;
   document.querySelector("#reading-result-status").textContent = `主牌已揭曉 ${session.draws.filter((entry) => entry.revealed).length} / ${session.drawCount} · 切牌${session.cut?.revealed ? "已揭曉" : "待翻開"}`;
   document.querySelector("#spread-result-title").textContent = spread.name;
-  document.querySelector("#spread-result-summary").textContent = `${session.drawCount} 張主牌 ＋ 1 張切牌 · 點牌翻開，選牌位可放大`;
+  document.querySelector("#spread-result-summary").textContent = `${session.drawCount} 張主牌 ＋ 1 張切牌 · 點牌翻開／放大，點空白處回到全部牌面`;
   const labels = document.querySelector("#spread-result-labels");
-  const list = document.querySelector("#reading-card-list");
-  const focusedIndex = list.contains(document.activeElement) ? document.activeElement.dataset.readingIndex : null;
+  const focusedIndex = labels.contains(document.activeElement) ? document.activeElement.dataset.readingIndex : null;
   labels.replaceChildren();
-  list.replaceChildren();
   readingEntries().forEach((entry, slot) => {
     const cut = entry === session.cut;
     const position = cut ? "切牌" : `${slot + 1} · ${spread.slots[slot].label}`;
     const identity = entry.faceUp ? `${CARDS[entry.index].name} · ${entry.reversed ? "逆位" : "正位"}` : "尚未翻牌";
-    const label = document.createElement("div");
+    const label = document.createElement("button");
+    label.type = "button";
     label.className = `spread-card-label${cut ? " is-cut" : ""}`;
     label.dataset.readingIndex = String(entry.index);
-    const title = document.createElement("strong"); title.textContent = position;
-    const subtitle = document.createElement("span"); subtitle.textContent = readingResult.detail !== null ? identity : entry.faceUp ? (entry.reversed ? "逆位" : "正位") : "尚未翻牌";
-    label.append(title, subtitle);
+    label.title = `${position} · ${identity}`;
+    label.setAttribute("aria-label", `${position}，${identity}，${entry.faceUp ? "放大檢視" : "翻開牌面"}`);
+    label.setAttribute("aria-expanded", String(readingResult.detail === entry.index));
+    const title = document.createElement("strong"); title.textContent = entry.faceUp ? CARDS[entry.index].name : "尚未翻牌";
+    label.append(title);
     labels.append(label);
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.readingIndex = String(entry.index);
-    button.textContent = cut ? "切牌" : String(slot + 1);
-    button.setAttribute("aria-label", `${position}，${identity}，放大檢視`);
-    button.setAttribute("aria-pressed", String(entry.index === selectedCard));
-    list.append(button);
   });
-  if (focusedIndex !== null) list.querySelector(`[data-reading-index="${focusedIndex}"]`)?.focus({ preventScroll: true });
+  if (focusedIndex !== null) labels.querySelector(`[data-reading-index="${focusedIndex}"]`)?.focus({ preventScroll: true });
 }
 
 function updateDrawEntry() {
@@ -3767,19 +3795,22 @@ function updateCardTransitions(now) {
   if (deckReturnStage === "outer-cover" && woodlandOpenCurrent <= 0.015) finishDeckReturn();
 }
 
+function readingPickTargets(event) {
+  const y = event.clientY - stage.getBoundingClientRect().top;
+  const outside = isReadingScrollable() && (y < readingScreenLayout.top || y > readingScreenLayout.bottom);
+  return cardMeshes.filter((card) => card.visible && (!outside || card.userData.cardIndex === readingResult.session.cut?.index));
+}
+
 renderer.domElement.addEventListener("click", (event) => {
   if (!inspectionVisible || drawRitual?.isOpen || activeMode !== "cards" || isCardTransitionActive()) return;
   setPointerFromEvent(event);
-  const hit = raycaster.intersectObjects(cardMeshes.filter((card) => card.visible), true)[0];
-  if (!hit) return;
+  const hit = raycaster.intersectObjects(readingPickTargets(event), true)[0];
+  if (!hit) { showReadingOverview(); return; }
   let cardRoot = hit.object;
   while (cardRoot.parent !== cardsGroup && cardRoot.parent) cardRoot = cardRoot.parent;
   const index = cardRoot.userData.cardIndex;
   if (readingResult) {
-    const entry = readingEntries().find((item) => item.index === index);
-    if (!entry) return;
-    focusReadingCard(index, entry.faceUp);
-    if (!entry.faceUp) void flipSelectedCard();
+    activateReadingCard(index);
   }
   else if (index === selectedCard) flipSelectedCard();
   else if (!readingResult) selectCard(index);
@@ -3850,6 +3881,45 @@ function pickRitualPosition(event) {
 function isRitualChoosing() {
   return drawRitual?.isOpen && ["cutting", "selecting"].includes(drawRitual.visual.phase);
 }
+
+function isReadingScrollable() {
+  return Boolean(readingResult && activeMode === "cards" && !drawRitual?.isOpen && !isCardTransitionActive() && readingScreenLayout?.scrollable);
+}
+
+readingScroll.addEventListener("scroll", () => {
+  if (!readingScroll.hidden) readingScrollOffset = readingScroll.scrollTop;
+});
+function bindReadingScrollGestures(surface) {
+  let suppressClick = false;
+  surface.addEventListener("wheel", (event) => {
+    if (!isReadingScrollable()) return;
+    event.preventDefault();
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? readingScreenLayout.viewportHeight : 1;
+    readingScroll.scrollTop += (event.deltaY || event.deltaX) * unit;
+  }, { passive: false });
+  surface.addEventListener("pointerdown", (event) => {
+    suppressClick = false;
+    if (!isReadingScrollable() || event.button !== 0) return;
+    readingPan = { id: event.pointerId, x: event.clientX, y: event.clientY, offset: readingScroll.scrollTop };
+    // Preserve a name button as the click target when the gesture is only a tap.
+    (event.target?.closest?.(".spread-card-label") ?? surface).setPointerCapture(event.pointerId);
+  });
+  surface.addEventListener("pointermove", (event) => {
+    if (!isReadingScrollable() || readingPan?.id !== event.pointerId) return;
+    if (Math.hypot(event.clientX - readingPan.x, event.clientY - readingPan.y) > SCENE_TAP_MAX_MOVE_PX) suppressClick = true;
+    readingScroll.scrollTop = readingPan.offset + readingPan.y - event.clientY;
+    event.preventDefault();
+  });
+  for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    surface.addEventListener(eventName, () => { readingPan = null; });
+  }
+  surface.addEventListener("click", (event) => {
+    if (suppressClick && event.detail !== 0) { event.preventDefault(); event.stopImmediatePropagation(); }
+    suppressClick = false;
+  }, true);
+}
+bindReadingScrollGestures(renderer.domElement);
+bindReadingScrollGestures(document.querySelector("#spread-result-labels"));
 
 renderer.domElement.addEventListener("pointerdown", (event) => {
   if (!isRitualChoosing() || event.button !== 0) return;
@@ -4064,18 +4134,73 @@ function updateRitualCards(dt, time) {
   }
 }
 
+function measureReadingLayout() {
+  const spread = getDrawSpread(readingResult.session.spreadId);
+  const bounds = stage.getBoundingClientRect();
+  const header = document.querySelector("#spread-result > header").getBoundingClientRect();
+  const footer = cardControls.getBoundingClientRect();
+  let mainLabelHeight = 0, cutLabelHeight = 0, detailLabelHeight = 0;
+  for (const label of document.querySelectorAll(".spread-card-label")) {
+    const index = Number(label.dataset.readingIndex);
+    const cut = index === readingResult.session.cut?.index;
+    const detail = index === readingResult.detail;
+    label.hidden = readingResult.detail !== null && !detail;
+    label.classList.toggle("is-detail", detail);
+    label.style.width = `${readingNameWidth(bounds.width, spread, { cut, detail })}px`;
+    if (label.hidden) continue;
+    const nameHeight = label.getBoundingClientRect().height;
+    label.dataset.nameHeight = String(nameHeight);
+    if (detail) detailLabelHeight = nameHeight;
+    if (cut) cutLabelHeight = nameHeight;
+    else mainLabelHeight = Math.max(mainLabelHeight, nameHeight);
+  }
+  readingScreenLayout = fitReadingLayout({ width: bounds.width, height: bounds.height,
+    top: Math.max(16, header.bottom - bounds.top + 16), footerTop: footer.top - bounds.top,
+    bottomPadding: Math.max(16, bounds.bottom - footer.bottom),
+    spread, mainLabelHeight, cutLabelHeight, detailLabelHeight, detail: readingResult.detail !== null });
+  if (readingLayoutSession !== readingResult.session) {
+    readingScrollOffset = 0;
+    readingLayoutSession = readingResult.session;
+  }
+  readingScroll.hidden = !readingScreenLayout.scrollable;
+  const scrollHint = document.querySelector("#reading-scroll-hint");
+  scrollHint.hidden = readingScroll.hidden;
+  if (readingScreenLayout.scrollable) {
+    const resultBounds = document.querySelector("#spread-result").getBoundingClientRect();
+    readingScroll.style.top = `${bounds.top - resultBounds.top + readingScreenLayout.top}px`;
+    scrollHint.style.top = `${bounds.top - resultBounds.top + readingScreenLayout.top - 14}px`;
+    readingScroll.style.height = `${readingScreenLayout.viewportHeight}px`;
+    document.querySelector("#reading-scroll-content").style.height = `${readingScreenLayout.contentHeight}px`;
+    readingScrollOffset = Math.min(readingScrollOffset, readingScreenLayout.contentHeight - readingScreenLayout.viewportHeight);
+    readingScroll.scrollTop = readingScrollOffset;
+  }
+  readingLayoutDirty = false;
+}
+
+function screenToReadingPlane(x, y, target) {
+  target.set(x / stage.clientWidth * 2 - 1, 1 - y / stage.clientHeight * 2, 0.5).unproject(camera);
+  target.sub(camera.position);
+  target.multiplyScalar((1.05 - camera.position.z) / target.z).add(camera.position);
+  return target;
+}
+
 function updateReadingCards(dt, time) {
   const { session, detail } = readingResult;
-  const spread = getDrawSpread(session.spreadId);
+  if (readingLayoutDirty || !readingScreenLayout) measureReadingLayout();
   const entries = readingEntries();
   for (const card of cardMeshes) {
     const entry = entries.find((item) => item.index === card.userData.cardIndex);
     const cut = entry && entry === session.cut;
-    card.visible = Boolean(entry) && (detail === null || cut || entry.index === detail);
+    card.visible = Boolean(entry) && (detail === null || entry.index === detail);
     if (!card.visible) continue;
     const slot = session.draws.indexOf(entry);
-    getReadingCardPose({ spread, slot: Math.max(0, slot), aspect: camera.aspect, cut, detail: detail === entry.index, faceUp: entry.faceUp }, ritualPose);
-    const speed = deckCarouselReducedMotion.matches ? 1000 : 9;
+    const rect = detail !== null ? readingScreenLayout.detail : cut ? readingScreenLayout.cut : readingScreenLayout.cards[slot];
+    const offset = readingScreenLayout.scrollable && !cut ? readingScrollOffset : 0;
+    screenToReadingPlane(rect.x, rect.y - offset, readingLabelPoint);
+    screenToReadingPlane(rect.x, rect.y - offset - rect.height / 2, readingProjectionPoint);
+    Object.assign(ritualPose, { x: readingLabelPoint.x, y: readingLabelPoint.y, z: 1.05,
+      scale: Math.abs(readingProjectionPoint.y - readingLabelPoint.y) / 0.505, ry: entry.faceUp ? 0 : Math.PI });
+    const speed = deckCarouselReducedMotion.matches || readingScreenLayout.scrollable ? 1000 : 9;
     card.position.x = THREE.MathUtils.damp(card.position.x, ritualPose.x, speed, dt);
     card.position.y = THREE.MathUtils.damp(card.position.y, ritualPose.y, speed, dt);
     card.position.z = THREE.MathUtils.damp(card.position.z, ritualPose.z, speed, dt);
@@ -4098,11 +4223,14 @@ function updateReadingCards(dt, time) {
     label.hidden = !card?.visible;
     if (!card?.visible) continue;
     card.getWorldPosition(readingLabelPoint);
-    readingLabelPoint.y -= card.scale.y * 0.56;
+    readingLabelPoint.y += card.scale.y * 0.505;
     readingLabelPoint.project(camera);
+    const labelBottom = (1 - readingLabelPoint.y) * 0.5 * stageBounds.height - 6;
+    if (readingScreenLayout.scrollable && !label.classList.contains("is-cut")) {
+      label.hidden = labelBottom - Number(label.dataset.nameHeight) < readingScreenLayout.top - 0.5 || labelBottom > readingScreenLayout.bottom;
+    }
     label.style.left = `${stageBounds.left - labelBounds.left + (readingLabelPoint.x + 1) * 0.5 * stageBounds.width}px`;
     label.style.top = `${stageBounds.top - labelBounds.top + (1 - readingLabelPoint.y) * 0.5 * stageBounds.height}px`;
-    label.style.width = `${detail === card.userData.cardIndex ? 225 : Math.max(45, Math.min(120, card.scale.x * 0.78 * stage.clientHeight / 3.3))}px`;
   }
 }
 
@@ -4235,6 +4363,39 @@ function moveAtOneSecond(current, target, dt) {
   return target > current ? Math.min(next, target) : Math.max(next, target);
 }
 
+function renderStageScene() {
+  if (!isReadingScrollable()) { renderer.render(scene, camera); return; }
+  // Render the pinned cut/background normally, then clip only the scrollable
+  // main cards. This keeps the existing meshes, materials, lighting and camera.
+  const mainIndices = new Set(readingResult.session.draws.map((entry) => entry.index));
+  const mainCards = cardMeshes.filter((card) => mainIndices.has(card.userData.cardIndex));
+  const originalMainVisibility = mainCards.map((card) => card.visible);
+  const cut = cardMeshes[readingResult.session.cut?.index];
+  const cutVisible = cut?.visible;
+  const decorations = scene.children.filter((object) => object !== cardsGroup && !object.isLight);
+  const decorationVisibility = decorations.map((object) => object.visible);
+  const autoClear = renderer.autoClear;
+  try {
+    mainCards.forEach((card) => { card.visible = false; });
+    renderer.render(scene, camera);
+    mainCards.forEach((card, index) => { card.visible = originalMainVisibility[index]; });
+    if (cut) cut.visible = false;
+    decorations.forEach((object) => { object.visible = false; });
+    renderer.autoClear = false;
+    renderer.setScissor(0, stage.clientHeight - readingScreenLayout.bottom, stage.clientWidth,
+      Math.max(1, readingScreenLayout.bottom - readingScreenLayout.top));
+    renderer.setScissorTest(true);
+    renderer.clearDepth();
+    renderer.render(scene, camera);
+  } finally {
+    mainCards.forEach((card, index) => { card.visible = originalMainVisibility[index]; });
+    if (cut) cut.visible = cutVisible;
+    decorations.forEach((object, index) => { object.visible = decorationVisibility[index]; });
+    renderer.autoClear = autoClear;
+    renderer.setScissorTest(false);
+  }
+}
+
 
 function animate(now) {
   const dt = Math.min((now - lastFrameTime) / 1000, 0.05);
@@ -4330,13 +4491,14 @@ function animate(now) {
   const shake = updateShake(dt, time);
   camera.position.add(shake);
   controls.update();
-  renderer.render(scene, camera);
+  renderStageScene();
   camera.position.sub(shake);
 }
 
 renderer.setAnimationLoop(animate);
 
 const resizeObserver = new ResizeObserver(([entry]) => {
+  readingLayoutDirty = true;
   const width = Math.max(1, entry.contentRect.width);
   const height = Math.max(1, entry.contentRect.height);
   renderer.setSize(width, height, false);
@@ -4344,6 +4506,10 @@ const resizeObserver = new ResizeObserver(([entry]) => {
   camera.updateProjectionMatrix();
 });
 resizeObserver.observe(stage);
+const readingTextObserver = new ResizeObserver(() => { readingLayoutDirty = true; });
+readingTextObserver.observe(cardControls);
+readingTextObserver.observe(document.querySelector("#spread-result > header"));
+document.fonts?.ready.then(() => { readingLayoutDirty = true; });
 
 loading.classList.add("is-hidden");
 const deckCarouselHadFocus = document.activeElement === deckCarouselTrack;

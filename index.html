@@ -7,7 +7,7 @@
     <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
     <title>Arcana Cabinet｜塔羅藏書室</title>
     <link rel="stylesheet" href="./styles.css?v=20260913-02" />
-    <link rel="stylesheet" href="./draw-ritual.css?v=20260913-02" />
+    <link rel="stylesheet" href="./draw-ritual.css?v=20260913-03" />
     <script type="importmap">
       {
         "imports": {
@@ -149,7 +149,6 @@
           </div>
           <div class="deck-flow-actions">
             <button id="reveal-reading" type="button" hidden>全部翻開</button>
-            <button id="reading-overview" type="button" hidden>牌陣總覽</button>
             <button id="redraw-card" type="button"><span>重新抽牌</span><small>開啟新一輪</small></button>
             <button id="return-deck" type="button"><span>收回牌盒</span><small>依序歸位</small></button>
           </div>
@@ -164,8 +163,9 @@
 
         <section id="spread-result" aria-label="本輪牌陣" hidden>
           <header><p id="spread-result-summary"></p><h2 id="spread-result-title"></h2></header>
-          <div id="spread-result-labels"></div>
-          <div id="reading-card-list" class="reading-card-list" role="group" aria-label="依抽取順序選擇本輪牌卡"></div>
+          <div id="spread-result-labels" role="group" aria-label="牌名：點選翻開或放大，放大時按 Escape 或點空白處返回總覽"></div>
+          <p id="reading-scroll-hint" hidden>↕ 上下滑動，查看更多牌卡</p>
+          <div id="reading-scroll" tabindex="0" role="region" aria-label="上下捲動查看完整牌陣，也可以在牌面區上下拖曳" title="上下滑動，查看更多牌卡" hidden><div id="reading-scroll-content" aria-hidden="true"></div></div>
         </section>
 
         <section id="draw-ritual" class="draw-ritual" aria-labelledby="draw-ritual-title" aria-hidden="true" data-phase="setup" hidden>
@@ -289,6 +289,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260913-02"></script>
+    <script type="module" src="./app.js?v=20260913-03"></script>
   </body>
 </html>
