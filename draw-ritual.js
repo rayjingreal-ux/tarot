@@ -1,5 +1,6 @@
 import { createDrawSession, pickDrawCard, autoPickDrawCard, cutDrawDeck, availableDrawPositions } from "./draw-session.js?v=20260913-01";
 import { DRAW_SPREADS, getDrawSpread } from "./draw-spreads.js?v=20260913-01";
+import { SHUFFLE_TIMING, getShuffleEnvelope } from "./ritual-layout.js?v=20260913-06";
 
 // Transparent stage HUD; the adapter animates and picks real cards in the existing Three.js scene.
 export function createDrawRitual(adapter) {
@@ -53,7 +54,7 @@ export function createDrawRitual(adapter) {
   }
   updateSpreadPreview();
   const visual = { phase: "idle", progress: 0, holding: false, focus: 0, selectedPosition: -1, phaseStartedAt: 0 };
-  const shuffleDuration = 4200;
+  const shuffleDuration = SHUFFLE_TIMING.durationMs;
   let session = null;
   let generation = 0;
   let sceneReady = false;
@@ -116,7 +117,7 @@ export function createDrawRitual(adapter) {
     surface.style.setProperty("--ritual-progress", String(visual.progress));
     const amount = Math.floor(visual.progress * 100);
     progress.value = amount;
-    const movement = amount < 25 ? "旋轉" : amount < 50 ? "四散" : amount < 77 ? "收攏" : "炸散展開";
+    const movement = getShuffleEnvelope(visual.progress).stage;
     progressLabel.textContent = amount === 100 ? "洗牌完成" : `${movement} · ${amount}%`;
     hold.disabled = false;
     if (automatic && amount < 100) {
@@ -131,7 +132,7 @@ export function createDrawRitual(adapter) {
     collect.hidden = false;
     collect.disabled = !sceneReady;
     surface.classList.add("is-shuffle-complete");
-    hold.setAttribute("aria-label", "再洗一次：點擊光手，重新完成旋轉、四散、收攏、炸散展開");
+    hold.setAttribute("aria-label", "再洗一次：點擊光手，重新完成旋轉、四散、收攏、聚光停留、炸散展開");
     hold.title = "點擊光手，再洗一次";
     find("draw-hand-instruction").textContent = "點擊光手再洗一次，或開始切牌";
     status.textContent = "洗牌完成。可以重洗，準備好再開始切牌。";
@@ -146,7 +147,7 @@ export function createDrawRitual(adapter) {
     playToEnd = true;
     collect.hidden = true;
     surface.classList.remove("is-shuffle-complete");
-    phase("shuffling", "再洗一次，讓牌卡流動", "旋轉、四散、收攏，最後炸散展開。完成後仍可再洗一次。");
+    phase("shuffling", "再洗一次，讓牌卡流動", "旋轉、四散、收攏；讓光芒停留，再向外炸散。完成後仍可再洗一次。");
     find("draw-hand-instruction").textContent = "重新洗牌中…";
     adapter.orderChanged?.(session);
     updateProgress();
@@ -155,7 +156,8 @@ export function createDrawRitual(adapter) {
 
   function holdTick(now) {
     if (!holding || surface.hidden || surface.dataset.phase !== "shuffling") return;
-    heldMs += Math.max(0, now - lastFrame);
+    // A delayed frame must not skip the visibly held centre-light interval.
+    heldMs += Math.min(100, Math.max(0, now - lastFrame));
     lastFrame = now;
     updateProgress();
     if (heldMs >= shuffleDuration) {
@@ -351,7 +353,7 @@ export function createDrawRitual(adapter) {
       hold.setAttribute("aria-label", "按住光手洗牌；空白鍵可按住，Enter 可自動完成一輪");
       hold.title = "按住光手洗牌；Enter 可自動完成一輪";
       find("draw-hand-instruction").textContent = automatic ? "迎接命運，讓牌卡帶路" : "按住光手，讓牌卡回應你";
-      phase("shuffling", automatic ? "迎接命運" : "把手，交給這一刻", automatic ? "旋轉、四散、收攏，等待命運展開。" : "按住中央光手；旋轉、四散、收攏，最後炸散展開。");
+      phase("shuffling", automatic ? "迎接命運" : "把手，交給這一刻", automatic ? "旋轉、四散、收攏；光芒凝聚停留，等待命運展開。" : "按住中央光手；旋轉、四散、收攏，聚光停留後再向外炸散。");
       updateProgress();
       adapter.startAnimation(session);
       if (!automatic) hold.focus();

@@ -21,7 +21,7 @@ function bind(names, state) {
 
 test("completed readings hide both artifact roots and the independent plinth for every deck", () => {
   const state = bind(["syncReadingArtifactVisibility"], {
-    artifactStageReady: true, readingResult: {}, activeMode: "cards", activeDeckKey: "woodland",
+    artifactStageReady: true, readingResult: {}, activeMode: "cards", activeDeckKey: "woodland", inspection: { dataset: {} },
     woodlandRoot: { visible: true }, unveiledRoot: { visible: false }, plinth: { visible: true },
     isBookDeck: (id) => id !== "unveiled",
   });
@@ -36,6 +36,15 @@ test("completed readings hide both artifact roots and the independent plinth for
     assert.equal(state.plinth.visible, true, "returning cards restores the box presentation");
     state.readingResult = {}; state.syncReadingArtifactVisibility();
     assert.equal(state.plinth.visible, false, "cancel back to a prior reading keeps artifacts hidden");
+    state.readingResult = null;
+    for (const phase of ["shuffling", "cutting", "selecting", "revealing"]) {
+      state.inspection.dataset.ritualPhase = phase;
+      state.syncReadingArtifactVisibility();
+      assert.ok(!state.plinth.visible && !state.woodlandRoot.visible && !state.unveiledRoot.visible, `${deck}/${phase} hides both boxes, guide and plinth`);
+    }
+    state.inspection.dataset.ritualPhase = "setup";
+    state.syncReadingArtifactVisibility(); assert.equal(state.plinth.visible, true);
+    delete state.inspection.dataset.ritualPhase;
   }
   state.artifactStageReady = false; state.woodlandRoot = null;
   assert.doesNotThrow(() => state.syncReadingArtifactVisibility());
@@ -81,38 +90,40 @@ test("each revealed name appears in overview; hidden cards never disclose identi
   const get = (id) => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
   const session = { spreadId: "free-2", method: "manual", drawCount: 2, draws: [{ index: 0, faceUp: true, reversed: true }, { index: 1, faceUp: false, reversed: false }], cut: { index: 2, faceUp: true, reversed: false } };
   const state = bind(["readingEntries", "updateReadingResult"], {
-    readingResult: { session, detail: null }, readingFlips: new Map(), activeMode: "cards", inspection: new Element(), revealingResult: null,
+    readingResult: { session, detail: null }, readingFlips: new Map(), exportingReading: false, activeMode: "cards", inspection: new Element(), revealingResult: null,
     syncReadingArtifactVisibility() {}, getDrawSpread, getCardDisplayName,
     CARDS: [{ name: "THE FOOL" }, { name: "SECRET CARD" }, { name: "THE STAR" }],
     document: { querySelector: get, createElement: () => new Element(), activeElement: null },
   });
   state.updateReadingResult();
-  const labels = get("#spread-result-labels").children;
+  const identityLabels = () => get("#spread-result-labels").children.filter((label) => label.dataset.labelSide === "bottom");
+  const positionLabels = () => get("#spread-result-labels").children.filter((label) => label.dataset.labelSide === "top");
+  const labels = identityLabels();
   assert.deepEqual(labels.map((label) => label.children[0].textContent), ["愚者", "尚未翻牌", "星星"]);
   assert.ok(labels[0].title.includes("THE FOOL"), "original English name is retained in the tooltip");
   assert.ok(labels[0]["aria-label"].includes("逆位"));
   assert.ok(labels[2]["aria-label"].includes("切牌"));
-  assert.deepEqual(labels.map((label) => label.children[1].children[0].textContent), ["第 1 張", "第 2 張", "切牌"]);
-  assert.deepEqual(labels.map((label) => label.children[1].children[1].textContent), ["逆位", "", "正位"]);
-  assert.equal(labels[0].children[1].children[1].hidden, false, "orientation must be visible, not tooltip-only");
-  assert.equal(labels[1].children[1].children[1].hidden, true);
-  assert.equal(labels[1].children[1].children[1].dataset.orientation, undefined, "face-down direction is not exposed");
+  assert.deepEqual(positionLabels().map((label) => label.children[0].textContent), ["第 1 張", "第 2 張", "切牌"]);
+  assert.deepEqual(labels.map((label) => label.children[1].children[0].textContent), ["逆位", "", "正位"]);
+  assert.equal(labels[0].children[1].children[0].hidden, false, "orientation must be visible, not tooltip-only");
+  assert.equal(labels[1].children[1].children[0].hidden, true);
+  assert.equal(labels[1].children[1].children[0].dataset.orientation, undefined, "face-down direction is not exposed");
   assert.ok(!JSON.stringify(labels[1]).includes("SECRET CARD"));
   assert.ok(labels.every((label) => label.type === "button"), "names remain keyboard accessible");
 
   state.readingFlips.set(0, { result: state.readingResult });
   state.updateReadingResult();
-  const turningLabel = get("#spread-result-labels").children[0];
+  const turningLabel = identityLabels()[0];
   assert.equal(turningLabel.children[0].textContent, "翻牌中…");
   assert.ok(!JSON.stringify(turningLabel).includes("愚者") && !JSON.stringify(turningLabel).includes("THE FOOL"));
-  assert.equal(turningLabel.children[1].children[1].hidden, true);
+  assert.equal(turningLabel.children[1].children[0].hidden, true);
   state.readingFlips.clear();
 
   session.draws[0].faceUp = false;
   state.updateReadingResult();
-  const faceDownLabel = get("#spread-result-labels").children[0];
-  assert.equal(faceDownLabel.children[1].children[0].textContent, "第 1 張");
-  assert.equal(faceDownLabel.children[1].children[1].hidden, true);
+  const faceDownLabel = identityLabels()[0];
+  assert.equal(positionLabels()[0].children[0].textContent, "第 1 張");
+  assert.equal(faceDownLabel.children[1].children[0].hidden, true);
   assert.ok(!JSON.stringify(faceDownLabel).includes("愚者") && !JSON.stringify(faceDownLabel).includes("THE FOOL"));
 
   for (const spread of DRAW_SPREADS) {
@@ -123,13 +134,14 @@ test("each revealed name appears in overview; hidden cards never disclose identi
     for (const detail of [null, 0, session.cut.index]) {
       state.readingResult.detail = detail;
       state.updateReadingResult();
-      const allLabels = get("#spread-result-labels").children;
+      const allLabels = identityLabels();
+      assert.equal(positionLabels().length, spread.count + 1);
       for (const [index, label] of allLabels.entries()) {
         const entry = index === spread.count ? session.cut : session.draws[index];
         assert.equal(label.children[0].textContent, `牌組中文名${index}`);
-        assert.equal(label.children[1].children[0].textContent, index === spread.count ? "切牌" : spread.slots[index].label);
-        assert.equal(label.children[1].children[1].textContent, entry.reversed ? "逆位" : "正位");
-        assert.equal(label.children[1].children[1].hidden, false);
+        assert.equal(positionLabels()[index].children[0].textContent, index === spread.count ? "切牌" : spread.slots[index].label);
+        assert.equal(label.children[1].children[0].textContent, entry.reversed ? "逆位" : "正位");
+        assert.equal(label.children[1].children[0].hidden, false);
       }
     }
   }
@@ -161,6 +173,15 @@ test("scrollable mobile results still rotate through an edge-on frame before rev
   state.updateReadingCards(1 / 60, 0.72);
   assert.equal(card.rotation.y, 0); assert.equal(flips.size, 0); assert.equal(refreshes, 1);
   assert.equal(card.userData.frontSurface.rotation.z, Math.PI, "random reversal survives flipping");
+  const hiddenCard = new THREE.Group(), hiddenEntry = { index: 1, faceUp: true, reversed: false };
+  hiddenCard.userData.cardIndex = 1;
+  result.detail = 0; result.session.draws.push(hiddenEntry);
+  state.readingEntries = () => [entry, hiddenEntry]; state.cardMeshes.push(hiddenCard);
+  state.readingScreenLayout.detail = state.readingScreenLayout.cards[0];
+  flips.set(1, { result, entry: hiddenEntry, from: Math.PI, to: 0, startedAt: 0, delay: 55, duration: 720 });
+  state.updateReadingCards(1 / 60, 1.5);
+  assert.equal(flips.size, 0, "offscreen cards finish flipping so detail view can export all cards");
+  assert.equal(hiddenCard.visible, false); assert.equal(hiddenCard.rotation.y, 0);
 });
 
 test("result markup removes the bottom numeric/cut strip and binds background return", () => {

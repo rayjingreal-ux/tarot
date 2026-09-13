@@ -6,9 +6,10 @@
     <meta name="theme-color" content="#050807" />
     <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
     <title>Arcana Cabinet｜塔羅藏書室</title>
-    <link rel="stylesheet" href="./styles.css?v=20260913-02" />
-    <link rel="stylesheet" href="./draw-ritual.css?v=20260913-05" />
+    <link rel="stylesheet" href="./styles.css?v=20260913-06-frame2" />
+    <link rel="stylesheet" href="./draw-ritual.css?v=20260913-06" />
     <link rel="stylesheet" href="./ring-selection.css?v=20260913-05" />
+    <link rel="stylesheet" href="./reading-export.css?v=20260913-06" />
     <script type="importmap">
       {
         "imports": {
@@ -150,6 +151,7 @@
           </div>
           <div class="deck-flow-actions">
             <button id="reveal-reading" type="button" hidden>全部翻開</button>
+            <button id="export-reading" type="button" title="儲存所有牌位、目前翻開的牌面與切牌，不含操作按鈕" hidden>儲存牌陣</button>
             <button id="redraw-card" type="button"><span>重新抽牌</span><small>開啟新一輪</small></button>
             <button id="return-deck" type="button"><span>收回牌盒</span><small>依序歸位</small></button>
           </div>
@@ -284,6 +286,12 @@
 
         <div class="interaction-hint"><i></i><span>拖曳旋轉</span><b>·</b><span>滾輪縮放</span></div>
       </section>
+      <dialog id="reading-export-dialog" aria-labelledby="reading-export-title">
+        <header><h2 id="reading-export-title">儲存完整牌陣</h2><button id="reading-export-close" type="button" aria-label="關閉圖片預覽">×</button></header>
+        <p id="reading-export-status" role="status"></p>
+        <img id="reading-export-image" alt="完整牌陣：包含所有主牌、宮位文字、牌名正逆位與左下角切牌" hidden />
+        <footer><a id="reading-export-download" download hidden>下載 PNG 圖片</a><a id="reading-export-open" target="_blank" rel="noopener" hidden>開啟圖片另存</a></footer>
+      </dialog>
     </main>
 
     <script>
@@ -291,6 +299,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260913-05"></script>
+    <script type="module" src="./app.js?v=20260913-06"></script>
   </body>
 </html>

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getRitualCardPose, getShuffleEnvelope } from '../ritual-layout.js';
+import { getRitualCardPose, getShuffleEnvelope, SHUFFLE_TIMING } from '../ritual-layout.js';
 
 test('all deck sizes and viewports produce finite, face-down ritual poses', () => {
   for (const count of [78, 80]) for (const aspect of [0.39, 0.58, 0.82, 1.64, 2.2]) {
@@ -54,12 +54,29 @@ test('an existing pose may be reused without per-frame allocations', () => {
 
 test('shuffle expands, gathers tightly and bursts into a stationary spread', () => {
   assert.equal(getShuffleEnvelope(0).radius, 0.64);
-  assert.equal(getShuffleEnvelope(0.5).radius, 1);
-  assert.ok(getShuffleEnvelope(0.77).radius < 0.09);
+  assert.equal(getShuffleEnvelope(SHUFFLE_TIMING.gatherStartMs / SHUFFLE_TIMING.durationMs).radius, 1);
+  assert.ok(getShuffleEnvelope(SHUFFLE_TIMING.chargeStartMs / SHUFFLE_TIMING.durationMs).radius < 0.09);
   assert.equal(getShuffleEnvelope(1).radius, 1);
   const input = { phase: 'shuffling', position: 12, count: 78, energy: 1, aspect: 1.6, progress: 1 };
   assert.deepEqual(getRitualCardPose({ ...input, time: 3 }), getRitualCardPose({ ...input, time: 30 }));
   assert.deepEqual(getRitualCardPose({ ...input, reducedMotion: true, progress: 0 }), getRitualCardPose({ ...input, reducedMotion: true, progress: 1 }));
+});
+
+test('shared timing holds a fully gathered, brilliant centre for 800 ms before any burst', () => {
+  const { durationMs, chargeStartMs, burstStartMs } = SHUFFLE_TIMING;
+  assert.ok(burstStartMs - chargeStartMs >= 650);
+  const options = { phase: 'shuffling', position: 12, count: 78, energy: 1, aspect: 1.6 };
+  const heldPose = getRitualCardPose({ ...options, progress: chargeStartMs / durationMs, time: 3 });
+  assert.equal(heldPose.x, 0);
+  assert.equal(heldPose.y, -0.02);
+  for (let elapsed = chargeStartMs; elapsed <= burstStartMs; elapsed += 25) {
+    const wave = getShuffleEnvelope(elapsed / durationMs);
+    assert.equal(wave.gather, 1); assert.equal(wave.charge, 1); assert.equal(wave.burst, 0);
+    assert.equal(wave.halo, 0); assert.equal(wave.stage, '聚光停留');
+    assert.deepEqual(getRitualCardPose({ ...options, progress: elapsed / durationMs, time: elapsed }), heldPose);
+  }
+  assert.ok(getShuffleEnvelope((burstStartMs + 100) / durationMs).burst > 0);
+  assert.equal(getShuffleEnvelope(1).halo, 1);
 });
 
 test('every shuffle phase stays bounded, finite and face down on phones and wide screens', () => {

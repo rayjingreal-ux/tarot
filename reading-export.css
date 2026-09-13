@@ -1,0 +1,10 @@
+#reading-export-dialog { box-sizing: border-box; width: min(720px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 20px; border: 1px solid #c9ad6b70; border-radius: 14px; background: #091613; color: #ecdfc3; overflow: auto; }
+#reading-export-dialog::backdrop { background: #020807d9; backdrop-filter: blur(8px); }
+#reading-export-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+#reading-export-dialog h2 { font: 24px var(--serif); margin: 0; }
+#reading-export-dialog button, #reading-export-dialog a { min-height: 44px; box-sizing: border-box; padding: 10px 16px; border: 1px solid #c9ad6b80; border-radius: 6px; background: #d8b76f16; color: #f5deb0; font-size: 15px; text-decoration: none; cursor: pointer; }
+#reading-export-dialog button:focus-visible, #reading-export-dialog a:focus-visible { outline: 2px solid #ffe5ac; outline-offset: 3px; }
+#reading-export-dialog p { font-size: 14px; line-height: 1.6; }
+#reading-export-image { display: block; width: 100%; height: auto; margin: 12px 0; border-radius: 6px; }
+#reading-export-dialog footer { display: flex; flex-wrap: wrap; gap: 10px; position: sticky; bottom: -20px; margin-inline: -20px; padding: 12px 20px; background: #091613f5; }
+#reading-export-dialog [hidden] { display: none !important; }

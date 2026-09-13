@@ -1,13 +1,27 @@
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
 const smooth = (value) => { const t = clamp(value, 0, 1); return t * t * (3 - 2 * t); };
 
+// Controller, card transforms, and light all share these held-time boundaries.
+// A full 800 ms of concentrated light separates the gather from the explosion.
+export const SHUFFLE_TIMING = Object.freeze({
+  durationMs: 5400, scatterStartMs: 1200, gatherStartMs: 2400,
+  chargeStartMs: 3600, burstStartMs: 4400, burstEndMs: 5100,
+});
+
 // A held-progress envelope, shared by cards and light. No per-frame randomness.
 export function getShuffleEnvelope(progress, wave = {}) {
   const p = clamp(progress, 0, 1);
-  const scatter = smooth((p - 0.25) / 0.25);
-  const gather = smooth((p - 0.5) / 0.27);
-  const burst = smooth((p - 0.77) / 0.17);
-  return Object.assign(wave, { scatter, gather, burst, radius: 0.64 + 0.36 * scatter - 0.92 * gather + 0.92 * burst });
+  const elapsed = p * SHUFFLE_TIMING.durationMs;
+  const { scatterStartMs, gatherStartMs, chargeStartMs, burstStartMs, burstEndMs } = SHUFFLE_TIMING;
+  const scatter = smooth((elapsed - scatterStartMs) / (gatherStartMs - scatterStartMs));
+  const gather = smooth((elapsed - gatherStartMs) / (chargeStartMs - gatherStartMs));
+  const burst = smooth((elapsed - burstStartMs) / (burstEndMs - burstStartMs));
+  const charge = smooth((elapsed - chargeStartMs + 250) / 250) * (1 - smooth((elapsed - burstStartMs) / 350));
+  const halo = smooth((elapsed - burstStartMs) / (burstEndMs - burstStartMs));
+  const stage = elapsed < scatterStartMs ? "旋轉" : elapsed < gatherStartMs ? "四散"
+    : elapsed < chargeStartMs ? "收攏" : elapsed <= burstStartMs ? "聚光停留" : "炸散展開";
+  return Object.assign(wave, { scatter, gather, charge, burst, halo, stage,
+    radius: 0.64 + 0.36 * scatter - 0.92 * gather + 0.92 * burst });
 }
 const shuffleWave = {};
 
@@ -46,14 +60,15 @@ export function getRitualCardPose(options, pose = {}) {
       const finalRadius = (lane ? 1.75 : 2.32) * (0.8 + seed * 0.2);
       const finalX = Math.cos(finalAngle) * finalRadius * compact;
       const finalY = Math.sin(finalAngle) * (lane ? 0.4 : 0.65);
-      pose.x = (pose.x * (1 - wave.burst) + finalX * wave.burst) * wave.radius;
-      pose.y = -0.02 + ((pose.y + 0.02) * (1 - wave.burst) + finalY * wave.burst) * wave.radius;
       const closed = wave.gather * (1 - wave.burst);
+      pose.x = (pose.x * (1 - wave.burst) + finalX * wave.burst) * wave.radius * (1 - closed);
+      pose.y = -0.02 + ((pose.y + 0.02) * (1 - wave.burst) + finalY * wave.burst) * wave.radius * (1 - closed);
       pose.z = pose.z * (1 - closed) + (0.6 + position * 0.003) * closed;
       pose.z = pose.z * (1 - wave.burst) + (0.6 + Math.sin(finalAngle) * 0.38 + lane * 0.2) * wave.burst;
       pose.rx = wave.burst === 1 ? 0 : pose.rx * (1 - closed) * (1 - wave.burst);
       pose.ry = Math.PI + (pose.ry - Math.PI) * (1 - closed) * (1 - wave.burst);
       pose.rz = pose.rz * (1 - closed) * (1 - wave.burst) + Math.sin(finalAngle + lane) * 0.32 * wave.burst;
+      if (closed === 1) { pose.x = 0; pose.rx = 0; pose.rz = 0; }
     }
   } else if (phase === "selecting" || phase === "revealing") {
     const relative = position - focus;

@@ -4,6 +4,7 @@ import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { SHUFFLE_TIMING } from "../ritual-layout.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const THREE_URL = pathToFileURL(resolve(ROOT, "vendor", "three", "three.module.js")).href;
@@ -15,7 +16,7 @@ assert.equal(effectSource.match(bareImportPattern)?.length, 1, "Expected one bar
 const runnableSource = effectSource.replace(
   bareImportPattern,
   `import * as THREE from ${JSON.stringify(THREE_URL)};`,
-).replace('"./ritual-layout.js?v=20260913-02"', JSON.stringify(pathToFileURL(resolve(ROOT, "ritual-layout.js")).href));
+).replace(/(["'])\.\/ritual-layout\.js(?:\?v=[^"']+)?\1/g, JSON.stringify(pathToFileURL(resolve(ROOT, "ritual-layout.js")).href));
 const effectModuleUrl = `data:text/javascript;base64,${Buffer.from(runnableSource).toString("base64")}`;
 const { createRitualEffects } = await import(effectModuleUrl);
 
@@ -192,4 +193,32 @@ test("idle hides immediately and dispose releases owned resources exactly once",
 
   assert.doesNotThrow(() => effects.dispose());
   for (const count of disposeCounts.values()) assert.equal(count, 1, "Repeated dispose must remain idempotent.");
+});
+
+test("centre light stays brilliant before the synchronized outward burst and peripheral aura persists", () => {
+  const { root, effects } = createHarness({ reducedMotion: false });
+  const core = root.getObjectByName("Concentrated ritual heartlight");
+  const gold = root.getObjectByName("Warm ritual glow");
+  const arc = root.getObjectByName("Ritual orbit arc 1");
+  const pulse = root.getObjectByName("Ritual gathering pulse 1");
+  let brightHeldMs = 0, chargeWidth = 0;
+  for (let elapsed = 10; elapsed <= SHUFFLE_TIMING.durationMs; elapsed += 10) {
+    effects.setState({ phase: "shuffling", progress: elapsed / SHUFFLE_TIMING.durationMs, holding: true, aspect: 1.6 });
+    effects.update(0.01, elapsed / 1000);
+    if (elapsed >= SHUFFLE_TIMING.chargeStartMs && elapsed <= SHUFFLE_TIMING.burstStartMs) {
+      if (core.material.opacity >= 0.9) brightHeldMs += 10;
+      assert.ok(gold.scale.x < 2, "background expansion waits until the central hold is finished");
+      chargeWidth = gold.scale.x;
+    }
+  }
+  assert.ok(brightHeldMs >= 650, `brilliant visible hold was ${brightHeldMs} ms`);
+  assert.ok(gold.scale.x >= chargeWidth * 4 && gold.scale.x > 7);
+  assert.ok(gold.scale.y > 4 && pulse.scale.x > 3, "the light reaches the periphery, not just the card pile");
+  effects.setState({ phase: "selecting", progress: 1, holding: false });
+  const rotation = arc.rotation.z;
+  for (let frame = 0; frame < 120; frame++) effects.update(1 / 60, 6 + frame / 60);
+  assert.ok(gold.scale.x > 7 && gold.material.opacity > 0.2, "a broad halo stays after the explosion");
+  assert.ok(arc.material.opacity > 0.2 && arc.rotation.z !== rotation, "peripheral arcs remain bright and orbit continuously");
+  assertFiniteTree(root, "charged burst and persistent aura");
+  effects.dispose();
 });

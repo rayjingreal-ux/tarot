@@ -1,15 +1,17 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createDrawRitual } from "./draw-ritual.js?v=20260913-05";
+import { createDrawRitual } from "./draw-ritual.js?v=20260913-06";
 import { markDrawRevealed, availableDrawPositions } from "./draw-session.js?v=20260913-01";
-import { createRitualEffects } from "./ritual-effects.js?v=20260913-02";
-import { getRitualCardPose } from "./ritual-layout.js?v=20260913-02";
+import { createRitualEffects } from "./ritual-effects.js?v=20260913-06";
+import { getRitualCardPose } from "./ritual-layout.js?v=20260913-06";
 import { getDrawSpread, getReadingCardPose } from "./draw-spreads.js?v=20260913-01";
 import { createDeckTexturePlan, createDeckTextureCache, getTextureUrl } from "./texture-loading.js?v=20260913-02";
-import { fitReadingLayout, readingNameWidth, readingLayoutMetrics } from "./reading-layout.js?v=20260913-05";
+import { fitReadingLayout, readingNameWidth, readingLayoutMetrics } from "./reading-layout.js?v=20260913-06";
 import { getCardDisplayName } from "./card-names.js?v=20260913-04";
 import { createRingSelection } from "./ring-selection.js?v=20260913-05";
 import { getCardFlipPose } from "./card-flip.js?v=20260913-05";
+import { createReadingExportModel, renderReadingExport, readingExportBlob } from "./reading-export.js?v=20260913-06";
+import { calculateDeckCarouselCameraFit } from "./deck-carousel-fit.js?v=20260913-06";
 
 
 const MAJOR_ARCANA = [
@@ -449,6 +451,7 @@ let deckCarousel3DRenderer = null;
 let deckCarousel3DCanvas = null;
 let deckCarousel3DEntries = [];
 let deckCarousel3DGlowTexture = null;
+let deckCarousel3DSparkTexture = null;
 const deckCarousel3DFailedIndices = new Set();
 let deckCarousel3DActiveIndex = -1;
 let deckCarousel3DWidth = 0;
@@ -714,6 +717,8 @@ let readingLayoutSession = null;
 let readingPan = null;
 const readingScroll = document.querySelector("#reading-scroll");
 const readingFlips = new Map();
+let exportingReading = false;
+let readingExportUrl = null;
 const readingFlipPose = {};
 let ringSelection = null;
 let ringRotation = 0;
@@ -941,6 +946,16 @@ cardCatalogToggle.addEventListener("click", () => {
   setCardCatalogOpen(cardCatalogToggle.getAttribute("aria-expanded") !== "true");
 });
 document.querySelector("#reveal-reading").addEventListener("click", revealReading);
+document.querySelector("#export-reading").addEventListener("click", exportReadingImage);
+document.querySelector("#reading-export-close").addEventListener("click", () => document.querySelector("#reading-export-dialog").close());
+document.querySelector("#reading-export-dialog").addEventListener("keydown", (event) => event.stopPropagation());
+document.querySelector("#reading-export-dialog").addEventListener("close", () => {
+  const oldUrl = readingExportUrl;
+  readingExportUrl = null;
+  document.querySelector("#reading-export-image").removeAttribute("src");
+  // Allow an already-started download to finish before releasing its local URL.
+  if (oldUrl) window.setTimeout(() => URL.revokeObjectURL(oldUrl), 60000);
+});
 document.querySelector("#spread-result-labels").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-reading-index]");
   if (button) activateReadingCard(Number(button.dataset.readingIndex));
@@ -1774,7 +1789,8 @@ function beginReadingCardFlip(entry, delay = 0) {
 
 function syncReadingArtifactVisibility() {
   if (!artifactStageReady) return;
-  const showArtifact = !(readingResult && activeMode === "cards");
+  const ritualActive = ["shuffling", "cutting", "selecting", "revealing"].includes(inspection.dataset.ritualPhase);
+  const showArtifact = !ritualActive && !(readingResult && activeMode === "cards");
   woodlandRoot.visible = showArtifact && isBookDeck(activeDeckKey);
   unveiledRoot.visible = showArtifact && activeDeckKey === "unveiled";
   plinth.visible = showArtifact;
@@ -1836,6 +1852,8 @@ function updateReadingResult() {
   document.querySelector("#spread-result").hidden = !readingResult || activeMode !== "cards";
   document.querySelector("#reveal-reading").hidden = !readingResult;
   document.querySelector("#reveal-reading").disabled = Boolean(readingResult && revealingResult === readingResult);
+  document.querySelector("#export-reading").hidden = !readingResult;
+  document.querySelector("#export-reading").disabled = exportingReading || readingFlips.size > 0 || Boolean(revealingResult);
   if (!readingResult) return;
   const { session } = readingResult;
   const spread = getDrawSpread(session.spreadId);
@@ -1846,6 +1864,7 @@ function updateReadingResult() {
   document.querySelector("#spread-result-summary").textContent = `${session.drawCount} 張主牌 ＋ 1 張切牌 · 點牌翻開／放大，點空白處回到全部牌面`;
   const labels = document.querySelector("#spread-result-labels");
   const focusedIndex = labels.contains(document.activeElement) ? document.activeElement.dataset.readingIndex : null;
+  const focusedSide = focusedIndex !== null ? document.activeElement.dataset.labelSide : null;
   labels.replaceChildren();
   readingEntries().forEach((entry, slot) => {
     const cut = entry === session.cut;
@@ -1855,26 +1874,75 @@ function updateReadingResult() {
     const displayName = getCardDisplayName(CARDS[entry.index]);
     const concealedName = flipping ? "翻牌中…" : "尚未翻牌";
     const identity = visibleFace ? `${displayName} · ${entry.reversed ? "逆位" : "正位"}` : concealedName;
+    const positionLabel = document.createElement("button");
+    positionLabel.type = "button";
+    positionLabel.className = `spread-card-label is-position${cut ? " is-cut" : ""}`;
+    positionLabel.dataset.readingIndex = String(entry.index);
+    positionLabel.dataset.labelSide = "top";
+    positionLabel.setAttribute("aria-label", `${position}，${entry.faceUp ? "放大檢視" : "翻開牌面"}`);
+    const meaning = document.createElement("span"); meaning.className = "spread-card-position";
+    meaning.textContent = cut ? "切牌" : spread.slots[slot].label;
+    positionLabel.append(meaning);
     const label = document.createElement("button");
     label.type = "button";
-    label.className = `spread-card-label${cut ? " is-cut" : ""}`;
+    label.className = `spread-card-label is-identity${cut ? " is-cut" : ""}`;
     label.dataset.readingIndex = String(entry.index);
+    label.dataset.labelSide = "bottom";
     label.title = `${position} · ${identity}${visibleFace && displayName !== CARDS[entry.index].name ? ` · ${CARDS[entry.index].name}` : ""}`;
     label.setAttribute("aria-label", `${position}，${identity}，${entry.faceUp ? "放大檢視" : "翻開牌面"}`);
     label.setAttribute("aria-expanded", String(readingResult.detail === entry.index));
     const title = document.createElement("strong"); title.textContent = visibleFace ? displayName : concealedName;
     const context = document.createElement("span"); context.className = "spread-card-context";
-    const meaning = document.createElement("span"); meaning.className = "spread-card-position";
-    meaning.textContent = cut ? "切牌" : spread.slots[slot].label;
     const orientation = document.createElement("span"); orientation.className = "spread-card-orientation";
     orientation.hidden = !visibleFace;
     orientation.textContent = visibleFace ? (entry.reversed ? "逆位" : "正位") : "";
     if (visibleFace) orientation.dataset.orientation = entry.reversed ? "reversed" : "upright";
-    context.append(meaning, orientation);
+    context.append(orientation);
     label.append(title, context);
-    labels.append(label);
+    labels.append(positionLabel, label);
   });
-  if (focusedIndex !== null) labels.querySelector(`[data-reading-index="${focusedIndex}"]`)?.focus({ preventScroll: true });
+  if (focusedIndex !== null) labels.querySelector(`[data-reading-index="${focusedIndex}"][data-label-side="${focusedSide}"]`)?.focus({ preventScroll: true });
+}
+
+async function exportReadingImage() {
+  const result = readingResult;
+  if (!result || exportingReading || readingFlips.size || drawRitual?.isOpen) return;
+  const button = document.querySelector("#export-reading"), dialog = document.querySelector("#reading-export-dialog");
+  const status = document.querySelector("#reading-export-status"), preview = document.querySelector("#reading-export-image");
+  const download = document.querySelector("#reading-export-download"), openImage = document.querySelector("#reading-export-open");
+  const model = createReadingExportModel({ session: result.session, cards: CARDS,
+    deckName: DECKS[activeDeckKey].header, displayName: getCardDisplayName });
+  const backImage = textures[`${activeDeckKey}:${DECKS[activeDeckKey].cardBack}`]?.image;
+  exportingReading = true; button.disabled = true;
+  status.textContent = "正在建立完整牌陣圖片…";
+  preview.hidden = download.hidden = openImage.hidden = true;
+  dialog.showModal();
+  const canvas = document.createElement("canvas");
+  try {
+    const entries = [...model.draws, ...(model.cut ? [model.cut] : [])];
+    const images = new Map(await Promise.all(entries.map(async (entry) => [entry.index,
+      entry.faceUp ? (await ensureCardTexture(entry.index))?.image : backImage])));
+    if (readingResult !== result || !dialog.open) return;
+    renderReadingExport(canvas, { model, spread: getDrawSpread(model.spreadId), images });
+    const blob = await readingExportBlob(canvas);
+    if (readingResult !== result || !dialog.open) return;
+    const previousUrl = readingExportUrl;
+    readingExportUrl = URL.createObjectURL(blob);
+    if (previousUrl) URL.revokeObjectURL(previousUrl);
+    preview.src = readingExportUrl;
+    download.href = openImage.href = readingExportUrl;
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    download.download = `塔羅-${getDrawSpread(model.spreadId).name}-${stamp}.png`;
+    preview.hidden = download.hidden = openImage.hidden = false;
+    status.textContent = "完整牌陣已備妥，包含牌位、牌名、正逆位與切牌，不含操作按鈕。尚未翻牌的卡片保留牌背；手機也可長按下圖儲存。";
+  } catch (error) {
+    if (dialog.open) status.textContent = "圖片暫時無法建立，請關閉後重試；本輪抽牌不會改變。";
+    console.warn("[arcana] reading export failed", error);
+  } finally {
+    canvas.width = canvas.height = 1;
+    exportingReading = false;
+    button.disabled = readingFlips.size > 0 || Boolean(revealingResult);
+  }
 }
 
 function updateDrawEntry() {
@@ -1973,6 +2041,7 @@ function initializeDrawRitual() {
       if (value === "selecting") { ringRotation = 0; ringFocusedPosition = -1; }
       if (active) inspection.dataset.ritualPhase = value;
       else delete inspection.dataset.ritualPhase;
+      syncReadingArtifactVisibility();
       inspection.querySelectorAll(".artifact-copy, .mode-tabs, #box-controls, #card-controls, #spread-result").forEach((element) => { element.inert = active; });
       controls.enabled = !active && activeMode !== "browse" && !(activeMode === "cards" && readingResult);
       renderer.domElement.tabIndex = ["cutting", "selecting"].includes(value) ? 0 : -1;
@@ -2394,16 +2463,54 @@ function createMaterial({ map = null, color = 0xffffff, roughness = 0.84, metaln
 // falls back to its photographed front, so it stays still and faces forward.
 function createDeckCarouselRadialTexture() {
   const canvas = document.createElement("canvas");
-  canvas.width = 128;
-  canvas.height = 128;
+  canvas.width = 192;
+  canvas.height = 192;
   const context = canvas.getContext("2d");
-  const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
-  gradient.addColorStop(0, "rgba(255,247,207,1)");
-  gradient.addColorStop(0.13, "rgba(246,213,139,.92)");
-  gradient.addColorStop(0.42, "rgba(115,184,166,.3)");
-  gradient.addColorStop(1, "rgba(0,0,0,0)");
-  context.fillStyle = gradient;
-  context.fillRect(0, 0, 128, 128);
+  context.globalCompositeOperation = "lighter";
+  const wisps = [
+    [76, 94, 70, 0.48],
+    [121, 74, 61, 0.34],
+    [112, 124, 58, 0.3],
+    [57, 128, 43, 0.2],
+  ];
+  wisps.forEach(([x, y, radius, alpha]) => {
+    const gradient = context.createRadialGradient(x, y, radius * 0.04, x, y, radius);
+    gradient.addColorStop(0, `rgba(255,255,255,${alpha})`);
+    gradient.addColorStop(0.28, `rgba(255,255,255,${alpha * 0.62})`);
+    gradient.addColorStop(0.68, `rgba(255,255,255,${alpha * 0.16})`);
+    gradient.addColorStop(1, "rgba(255,255,255,0)");
+    context.fillStyle = gradient;
+    context.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+  });
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function createDeckCarouselSparkTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const context = canvas.getContext("2d");
+  const core = context.createRadialGradient(32, 32, 0, 32, 32, 17);
+  core.addColorStop(0, "rgba(255,255,255,1)");
+  core.addColorStop(0.12, "rgba(255,246,211,.94)");
+  core.addColorStop(0.42, "rgba(235,205,141,.34)");
+  core.addColorStop(1, "rgba(255,255,255,0)");
+  context.fillStyle = core;
+  context.fillRect(0, 0, 64, 64);
+  const horizontal = context.createLinearGradient(8, 32, 56, 32);
+  horizontal.addColorStop(0, "rgba(255,255,255,0)");
+  horizontal.addColorStop(0.5, "rgba(255,247,218,.58)");
+  horizontal.addColorStop(1, "rgba(255,255,255,0)");
+  context.fillStyle = horizontal;
+  context.fillRect(8, 31.4, 48, 1.2);
+  const vertical = context.createLinearGradient(32, 10, 32, 54);
+  vertical.addColorStop(0, "rgba(255,255,255,0)");
+  vertical.addColorStop(0.5, "rgba(255,247,218,.46)");
+  vertical.addColorStop(1, "rgba(255,255,255,0)");
+  context.fillStyle = vertical;
+  context.fillRect(31.4, 10, 1.2, 44);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
@@ -2487,7 +2594,7 @@ function addDeckCarouselEdges(mesh, color, edgeMaterials) {
   edgeMaterials.push(material);
 }
 
-function createDeckCarouselPreviewEntry([deckKey, deck], deckIndex, glowTexture) {
+function createDeckCarouselPreviewEntry([deckKey, deck], deckIndex, glowTexture, sparkleTexture) {
   const definition = getDeckCarousel3DDefinition(deck);
   const { faces, width, height, depth, coverDepth, edgeColor, bookStyle } = definition;
   const scene = new THREE.Scene();
@@ -2547,36 +2654,55 @@ function createDeckCarouselPreviewEntry([deckKey, deck], deckIndex, glowTexture)
   glintLight.position.set(-1.5, 1.1, 2.4);
   scene.add(hemisphereLight, keyLight, rimLight, glintLight);
 
-  const glowMaterial = new THREE.SpriteMaterial({
-    map: glowTexture,
-    color: edgeColor,
-    transparent: true,
-    opacity: 0.38,
-    blending: THREE.AdditiveBlending,
-    depthTest: false,
-    depthWrite: false,
+  const glow = new THREE.Group();
+  glow.name = "soft, non-geometric carousel aura";
+  const glowMaterials = [];
+  const glowLayers = [
+    { color: edgeColor, x: -0.1, y: 0.02, z: -0.62, width: 2.42, height: 1.82, opacity: 0.14, phase: 0.2 },
+    { color: 0xd8b76f, x: 0.18, y: -0.08, z: -0.66, width: 2.1, height: 1.66, opacity: 0.11, phase: 2.1 },
+    { color: 0x79aa9c, x: -0.22, y: 0.15, z: -0.7, width: 1.94, height: 1.52, opacity: 0.09, phase: 4.3 },
+  ];
+  glowLayers.forEach((layer) => {
+    const material = new THREE.SpriteMaterial({
+      map: glowTexture,
+      color: layer.color,
+      transparent: true,
+      opacity: layer.opacity,
+      blending: THREE.AdditiveBlending,
+      depthTest: false,
+      depthWrite: false,
+      rotation: layer.phase * 0.17,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.position.set(layer.x * width, layer.y * height, layer.z);
+    sprite.scale.set(width * layer.width, height * layer.height, 1);
+    sprite.userData.carouselAura = layer;
+    glow.add(sprite);
+    glowMaterials.push(material);
   });
-  const glow = new THREE.Sprite(glowMaterial);
-  glow.position.z = -0.58;
-  glow.scale.set(width * 2.35, height * 1.8, 1);
   scene.add(glow);
 
-  const sparklePositions = new Float32Array(42 * 3);
-  for (let index = 0; index < 42; index += 1) {
-    const angle = index / 42 * Math.PI * 2 + deckIndex * 0.61;
-    const radius = 0.67 + ((index * 17) % 13) / 28;
-    sparklePositions[index * 3] = Math.cos(angle) * radius * width;
-    sparklePositions[index * 3 + 1] = Math.sin(angle) * radius * height * 0.72;
-    sparklePositions[index * 3 + 2] = 0.18 + ((index * 11) % 9) * 0.045;
+  const sparkleCount = 34;
+  const sparklePositions = new Float32Array(sparkleCount * 3);
+  for (let index = 0; index < sparkleCount; index += 1) {
+    const seed = index + 1 + deckIndex * 41;
+    const angle = ((seed * 0.61803398875) % 1) * Math.PI * 2;
+    const radiusNoise = ((seed * 0.754877666) % 1);
+    const radius = 0.34 + Math.pow(radiusNoise, 0.68) * 0.78;
+    const horizontalWander = Math.sin(seed * 2.17) * 0.09;
+    const verticalWander = Math.cos(seed * 1.73) * 0.07;
+    sparklePositions[index * 3] = (Math.cos(angle) * radius + horizontalWander) * width;
+    sparklePositions[index * 3 + 1] = (Math.sin(angle) * radius * 0.7 + verticalWander) * height;
+    sparklePositions[index * 3 + 2] = 0.12 + ((seed * 0.438579) % 1) * 0.34;
   }
   const sparkleGeometry = new THREE.BufferGeometry();
   sparkleGeometry.setAttribute("position", new THREE.BufferAttribute(sparklePositions, 3));
   const sparkleMaterial = new THREE.PointsMaterial({
-    map: glowTexture,
-    color: 0xffe5a3,
-    size: 0.085,
+    map: sparkleTexture,
+    color: 0xffe8b0,
+    size: 0.052,
     transparent: true,
-    opacity: 0.72,
+    opacity: 0.42,
     blending: THREE.AdditiveBlending,
     depthTest: false,
     depthWrite: false,
@@ -2594,7 +2720,7 @@ function createDeckCarouselPreviewEntry([deckKey, deck], deckIndex, glowTexture)
     definition,
     edgeMaterials,
     glow,
-    glowMaterial,
+    glowMaterials,
     glintLight,
     sparkles,
     sparkleMaterial,
@@ -2605,6 +2731,14 @@ function resetDeckCarousel3DEntry(entry) {
   if (!entry) return;
   entry.root.quaternion.identity();
   entry.root.position.set(0, 0, 0);
+  entry.glow.children.forEach((sprite) => {
+    const layer = sprite.userData.carouselAura;
+    sprite.position.x = layer.x * entry.definition.width;
+    sprite.position.y = layer.y * entry.definition.height;
+    sprite.material.rotation = layer.phase * 0.17;
+  });
+  entry.glow.scale.setScalar(1);
+  entry.sparkles.position.set(0, 0, 0);
   entry.sparkles.rotation.set(0, 0, 0);
 }
 
@@ -2624,7 +2758,12 @@ function activateDeckCarousel3DPreview(index) {
   if (!deckCarousel3DReady || !deckCarousel3DCanvas || deckCarousel3DFailedIndices.has(index)) return;
   if (!deckCarousel3DEntries[index]) {
     try {
-      deckCarousel3DEntries[index] = createDeckCarouselPreviewEntry(deckEntries[index], index, deckCarousel3DGlowTexture);
+      deckCarousel3DEntries[index] = createDeckCarouselPreviewEntry(
+        deckEntries[index],
+        index,
+        deckCarousel3DGlowTexture,
+        deckCarousel3DSparkTexture,
+      );
     } catch (error) {
       deckCarousel3DFailedIndices.add(index);
       console.warn(`[arcana] 3D preview unavailable for ${deckEntries[index]?.[0] ?? `deck ${index + 1}`}; using its photographed cover.`, error);
@@ -2673,14 +2812,11 @@ function refreshDeckCarousel3DPreview() {
 }
 
 function fitDeckCarousel3DCamera(entry, aspect) {
-  const { width, height, depth, coverDepth } = entry.definition;
-  const verticalFov = THREE.MathUtils.degToRad(entry.camera.fov);
-  const halfVertical = Math.tan(verticalFov / 2);
-  const displayWidth = Math.hypot(width, depth + coverDepth);
-  const distanceForHeight = height / (2 * halfVertical);
-  const distanceForWidth = displayWidth / (2 * halfVertical * Math.max(aspect, 0.2));
-  const distance = Math.max(distanceForHeight, distanceForWidth) * 1.08;
-  entry.camera.position.set(0, 0.015, distance);
+  const fit = calculateDeckCarouselCameraFit(entry.definition, aspect, {
+    verticalFovDegrees: entry.camera.fov,
+  });
+  entry.camera.userData.carouselFit = fit;
+  entry.camera.position.set(0, 0, fit.distance);
   entry.camera.lookAt(0, 0, 0);
 }
 
@@ -2704,10 +2840,12 @@ function renderDeckCarousel3DPreview(dt, time) {
     entry.root.rotation.y = (entry.root.rotation.y + dt * 0.56) % (Math.PI * 2);
     entry.root.rotation.x = -0.035 + Math.sin(time * 0.72) * 0.025;
     entry.root.position.y = Math.sin(time * 0.92) * 0.022;
-    entry.sparkles.rotation.z = time * 0.075;
+    entry.sparkles.position.x = Math.sin(time * 0.31 + deckCarousel3DActiveIndex) * 0.018;
+    entry.sparkles.position.y = Math.cos(time * 0.37 + deckCarousel3DActiveIndex * 0.7) * 0.014;
   } else {
     entry.root.rotation.set(0, 0, 0);
     entry.root.position.y = 0;
+    entry.sparkles.position.set(0, 0, 0);
     entry.sparkles.rotation.set(0, 0, 0);
   }
 
@@ -2720,12 +2858,19 @@ function renderDeckCarousel3DPreview(dt, time) {
     entry.glintLight.position.y = 0.78 + Math.cos(time * 1.08) * 0.62;
   }
   entry.glintLight.intensity = reducedMotion ? 1.6 : 2.1 + shimmer * 1.8;
-  entry.glowMaterial.opacity = reducedMotion ? 0.25 : 0.28 + shimmer * 0.2;
-  entry.sparkleMaterial.opacity = reducedMotion ? 0.22 : 0.42 + shimmer * 0.38;
-  entry.edgeMaterials.forEach((material) => {
-    material.opacity = reducedMotion ? 0.26 : 0.34 + shimmer * 0.3;
+  entry.glow.children.forEach((sprite, index) => {
+    const layer = sprite.userData.carouselAura;
+    const pulse = reducedMotion ? 0.74 : 0.72 + Math.sin(time * (0.48 + index * 0.07) + layer.phase) * 0.16;
+    sprite.material.opacity = layer.opacity * pulse;
+    sprite.material.rotation = layer.phase * 0.17 + (reducedMotion ? 0 : Math.sin(time * 0.19 + layer.phase) * 0.045);
+    sprite.position.x = layer.x * entry.definition.width + (reducedMotion ? 0 : Math.sin(time * 0.23 + layer.phase) * 0.025);
+    sprite.position.y = layer.y * entry.definition.height + (reducedMotion ? 0 : Math.cos(time * 0.27 + layer.phase) * 0.02);
   });
-  const sparkleScale = reducedMotion ? 1 : 0.98 + shimmer * 0.045;
+  entry.sparkleMaterial.opacity = reducedMotion ? 0.16 : 0.2 + shimmer * 0.24;
+  entry.edgeMaterials.forEach((material) => {
+    material.opacity = reducedMotion ? 0.22 : 0.28 + shimmer * 0.22;
+  });
+  const sparkleScale = reducedMotion ? 1 : 0.985 + shimmer * 0.025;
   entry.sparkles.scale.setScalar(sparkleScale);
   deckCarousel3DRenderer.render(entry.scene, entry.camera);
 }
@@ -2746,6 +2891,7 @@ function initializeDeckCarousel3D() {
     deckCarousel3DRenderer.toneMappingExposure = 1.05;
     deckCarousel3DRenderer.setClearColor(0x000000, 0);
     deckCarousel3DGlowTexture = createDeckCarouselRadialTexture();
+    deckCarousel3DSparkTexture = createDeckCarouselSparkTexture();
     deckCarousel3DEntries = new Array(deckEntries.length).fill(null);
     deckCarousel3DReady = true;
     deckCarousel.classList.add("has-3d-carousel");
@@ -4267,7 +4413,8 @@ function measureReadingLayout() {
   inspection.dataset.readingCompact = String(metrics.compact);
   const header = document.querySelector("#spread-result > header").getBoundingClientRect();
   const footer = cardControls.getBoundingClientRect();
-  let mainLabelHeight = 0, cutLabelHeight = 0, detailLabelHeight = 0;
+  const labelHeights = { mainTopLabelHeight: 0, mainBottomLabelHeight: 0, cutTopLabelHeight: 0,
+    cutBottomLabelHeight: 0, detailTopLabelHeight: 0, detailBottomLabelHeight: 0 };
   for (const label of document.querySelectorAll(".spread-card-label")) {
     const index = Number(label.dataset.readingIndex);
     const cut = index === readingResult.session.cut?.index;
@@ -4278,14 +4425,15 @@ function measureReadingLayout() {
     if (label.hidden) continue;
     const nameHeight = label.getBoundingClientRect().height;
     label.dataset.nameHeight = String(nameHeight);
-    if (detail) detailLabelHeight = nameHeight;
-    if (cut) cutLabelHeight = nameHeight;
-    else mainLabelHeight = Math.max(mainLabelHeight, nameHeight);
+    const side = label.classList.contains("is-identity") ? "Bottom" : "Top";
+    if (detail) labelHeights[`detail${side}LabelHeight`] = nameHeight;
+    if (cut) labelHeights[`cut${side}LabelHeight`] = nameHeight;
+    else labelHeights[`main${side}LabelHeight`] = Math.max(labelHeights[`main${side}LabelHeight`], nameHeight);
   }
   readingScreenLayout = fitReadingLayout({ width: bounds.width, height: bounds.height,
     top: Math.max(16, header.bottom - bounds.top + metrics.headerGap), footerTop: footer.top - bounds.top,
     bottomPadding: Math.max(16, bounds.bottom - footer.bottom),
-    spread, mainLabelHeight, cutLabelHeight, detailLabelHeight, detail: readingResult.detail !== null });
+    spread, ...labelHeights, detail: readingResult.detail !== null });
   document.querySelector("#spread-result").style.setProperty("--reading-label-gap", `${readingScreenLayout.labelGap}px`);
   if (readingLayoutSession !== readingResult.session) {
     readingScrollOffset = 0;
@@ -4322,6 +4470,13 @@ function updateReadingCards(dt, time) {
     const entry = entries.find((item) => item.index === card.userData.cardIndex);
     const cut = entry && entry === session.cut;
     card.visible = Boolean(entry) && (detail === null || entry.index === detail);
+    const flip = readingFlips.get(card.userData.cardIndex);
+    // Finish offscreen flips too, so a detail view can export the whole reading.
+    if (entry && flip?.result === readingResult) {
+      getCardFlipPose({ ...flip, elapsed: time * 1000 - flip.startedAt }, readingFlipPose);
+      card.rotation.y = readingFlipPose.rotationY;
+      if (readingFlipPose.done) { readingFlips.delete(entry.index); finishedFlip = true; }
+    }
     if (!card.visible) continue;
     const slot = session.draws.indexOf(entry);
     const rect = detail !== null ? readingScreenLayout.detail : cut ? readingScreenLayout.cut : readingScreenLayout.cards[slot];
@@ -4335,12 +4490,7 @@ function updateReadingCards(dt, time) {
     card.position.y = THREE.MathUtils.damp(card.position.y, ritualPose.y, speed, dt);
     card.position.z = THREE.MathUtils.damp(card.position.z, ritualPose.z, speed, dt);
     card.rotation.x = THREE.MathUtils.damp(card.rotation.x, 0, speed, dt);
-    const flip = readingFlips.get(entry.index);
-    if (flip?.result === readingResult) {
-      getCardFlipPose({ ...flip, elapsed: time * 1000 - flip.startedAt }, readingFlipPose);
-      card.rotation.y = readingFlipPose.rotationY;
-      if (readingFlipPose.done) { readingFlips.delete(entry.index); finishedFlip = true; }
-    } else card.rotation.y = THREE.MathUtils.damp(card.rotation.y, ritualPose.ry, deckCarouselReducedMotion.matches ? 1000 : 7.5, dt);
+    if (flip?.result !== readingResult) card.rotation.y = THREE.MathUtils.damp(card.rotation.y, ritualPose.ry, deckCarouselReducedMotion.matches ? 1000 : 7.5, dt);
     card.rotation.z = THREE.MathUtils.damp(card.rotation.z, 0, speed, dt);
     card.scale.setScalar(THREE.MathUtils.damp(card.scale.x, ritualPose.scale, speed, dt));
     // The back stays direction-neutral; only the original front surface is reversed.
@@ -4358,12 +4508,16 @@ function updateReadingCards(dt, time) {
     const card = cardMeshes[Number(label.dataset.readingIndex)];
     label.hidden = !card?.visible;
     if (!card?.visible) continue;
+    const below = label.classList.contains("is-identity");
     card.getWorldPosition(readingLabelPoint);
-    readingLabelPoint.y += card.scale.y * 0.505;
+    readingLabelPoint.y += card.scale.y * 0.505 * (below ? -1 : 1);
     readingLabelPoint.project(camera);
-    const labelBottom = (1 - readingLabelPoint.y) * 0.5 * stageBounds.height - readingScreenLayout.labelGap;
+    const anchor = (1 - readingLabelPoint.y) * 0.5 * stageBounds.height;
+    const labelHeight = Number(label.dataset.nameHeight);
+    const labelTop = below ? anchor + readingScreenLayout.labelGap : anchor - readingScreenLayout.labelGap - labelHeight;
+    const labelBottom = labelTop + labelHeight;
     if (readingScreenLayout.scrollable && !label.classList.contains("is-cut")) {
-      label.hidden = labelBottom - Number(label.dataset.nameHeight) < readingScreenLayout.top - 0.5 || labelBottom > readingScreenLayout.bottom;
+      label.hidden = labelTop < readingScreenLayout.top - 0.5 || labelBottom > readingScreenLayout.bottom + 0.5;
     }
     label.style.left = `${stageBounds.left - labelBounds.left + (readingLabelPoint.x + 1) * 0.5 * stageBounds.width}px`;
     label.style.top = `${stageBounds.top - labelBounds.top + (1 - readingLabelPoint.y) * 0.5 * stageBounds.height}px`;

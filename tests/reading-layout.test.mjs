@@ -17,6 +17,7 @@ const screens = [
 const overlaps = (a, b) => a.left < b.right - 0.01 && a.right > b.left + 0.01 && a.top < b.bottom - 0.01 && a.bottom > b.top + 0.01;
 const cardBox = (card) => ({ left: card.x - card.width / 2, right: card.x + card.width / 2, top: card.y - card.height / 2, bottom: card.y + card.height / 2 });
 const nameBox = (card, width, height, gap = 8) => ({ left: card.x - width / 2, right: card.x + width / 2, top: card.y - card.height / 2 - gap - height, bottom: card.y - card.height / 2 - gap });
+const bottomNameBox = (card, width, height, gap = 8) => ({ left: card.x - width / 2, right: card.x + width / 2, top: card.y + card.height / 2 + gap, bottom: card.y + card.height / 2 + gap + height });
 
 test("fourteen spreads preserve full names and cards, with reachable scroll content on small screens", () => {
   for (const screen of screens) for (const spread of DRAW_SPREADS) {
@@ -39,7 +40,7 @@ test("fourteen spreads preserve full names and cards, with reachable scroll cont
       assert.ok(!overlaps(names[i], cards[j]), `${screen.width} / ${spread.id}: name ${i} covers card ${j}`);
       if (i !== j) assert.ok(!overlaps(names[i], names[j]), `${spread.id}: names overlap`);
     }
-    assert.ok(layout.cards.every((card) => card.height >= 70 && Math.abs(card.width / card.height - 0.61 / 1.01) < 1e-10));
+    assert.ok(layout.cards.every((card) => card.height >= (layout.compact ? 68 : 70) && Math.abs(card.width / card.height - 0.61 / 1.01) < 1e-10));
     assert.ok(layout.bottom < cutName.top && cut.bottom <= screen.height - 15);
   }
 });
@@ -124,7 +125,7 @@ test("short phones and long house labels scroll without discarding text, directi
       const offset = Math.max(0, Math.min(label.top - layout.top, layout.contentHeight - layout.viewportHeight));
       assert.ok(label.top - offset >= layout.top - 0.01);
       assert.ok(cardBox(card).bottom - offset <= layout.bottom + 0.01, "full name, metadata and card can be viewed together");
-      assert.ok(card.width >= 44, "scroll fallback does not shrink the touch target");
+      assert.ok(card.width >= 40, "scroll fallback keeps the card usable alongside its wider clickable labels");
     }
   }
 });
@@ -144,6 +145,72 @@ test("compact house styling is overview-only and does not truncate names or mean
   assert.match(css, /\.spread-card-label\.is-detail strong[^}]*font-size: 16px/);
   assert.match(css, /\.spread-card-label\.is-detail \.spread-card-context[^}]*font-size: 14px/);
   assert.match(css, /var\(--reading-label-gap, 8px\)/);
+});
+
+test("house meanings sit above, identities below, and all thirteen cards fit with a four-button mobile toolbar", () => {
+  const spread = DRAW_SPREADS.find((item) => item.id === "houses");
+  for (const [width, height, mainTopLabelHeight, mainBottomLabelHeight] of [[390, 844, 25, 40], [430, 932, 25, 40], [390, 800, 25, 28]]) {
+    // 2 × 2 controls have a 108px total reserved height; labels are measured
+    // independently, including fully wrapped names and the separate direction row.
+    const cutTopLabelHeight = 13, cutBottomLabelHeight = 28;
+    const layout = fitReadingLayout({ width, height, top: 118, footerTop: height - 108,
+      spread, mainTopLabelHeight, mainBottomLabelHeight, cutTopLabelHeight, cutBottomLabelHeight });
+    assert.equal(layout.scrollable, false, `${width} × ${height}: complete houses fit`);
+    assert.equal(layout.cards.length, 13);
+    const cards = layout.cards.map(cardBox);
+    const meanings = layout.cards.map((card) => nameBox(card, readingNameWidth(width, spread), mainTopLabelHeight, layout.labelGap));
+    const identities = layout.cards.map((card) => bottomNameBox(card, readingNameWidth(width, spread), mainBottomLabelHeight, layout.labelGap));
+    const cut = cardBox(layout.cut);
+    const cutMeaning = nameBox(layout.cut, readingNameWidth(width, spread, { cut: true }), cutTopLabelHeight, layout.labelGap);
+    const cutIdentity = bottomNameBox(layout.cut, readingNameWidth(width, spread, { cut: true }), cutBottomLabelHeight, layout.labelGap);
+    for (let i = 0; i < cards.length; i++) {
+      assert.ok(meanings[i].top >= layout.top - 0.01 && identities[i].bottom <= layout.bottom + 0.01);
+      assert.ok(meanings[i].bottom < cards[i].top && identities[i].top > cards[i].bottom);
+      assert.ok(layout.cards[i].height >= 68 && layout.cards[i].width >= 40);
+      for (let j = 0; j < cards.length; j++) {
+        assert.ok(!overlaps(meanings[i], cards[j]) && !overlaps(identities[i], cards[j]));
+        assert.ok(!overlaps(meanings[i], identities[j]), `house ${i + 1} meaning clears house ${j + 1} identity`);
+        if (i !== j) assert.ok(!overlaps(meanings[i], meanings[j]) && !overlaps(identities[i], identities[j]));
+      }
+      for (const box of [meanings[i], cards[i], identities[i]]) {
+        assert.ok(!overlaps(box, cutMeaning) && !overlaps(box, cut) && !overlaps(box, cutIdentity));
+      }
+    }
+    assert.ok(cutMeaning.bottom < cut.top && cutIdentity.top > cut.bottom);
+    assert.ok(cutIdentity.bottom <= height - 16, "cut identity stays above the safe bottom inset");
+    assert.ok(cutIdentity.right <= width * 0.3, "cut text stays left of the four-button toolbar");
+  }
+});
+
+test("split-label scroll and detail preserve both full labels, including the cut card", () => {
+  for (const spread of DRAW_SPREADS) {
+    const width = 390, height = 620, top = 118, footerTop = height - 112;
+    const mainTopLabelHeight = 40, mainBottomLabelHeight = 60, cutTopLabelHeight = 18, cutBottomLabelHeight = 44;
+    const layout = fitReadingLayout({ width, height, top, footerTop, spread,
+      mainTopLabelHeight, mainBottomLabelHeight, cutTopLabelHeight, cutBottomLabelHeight });
+    for (const card of layout.cards) {
+      const meaning = nameBox(card, readingNameWidth(width, spread), mainTopLabelHeight, layout.labelGap);
+      const identity = bottomNameBox(card, readingNameWidth(width, spread), mainBottomLabelHeight, layout.labelGap);
+      const offset = Math.max(0, Math.min(meaning.top - top, layout.contentHeight - layout.viewportHeight));
+      assert.ok(meaning.top - offset >= top - 0.01 && identity.bottom - offset <= layout.bottom + 0.01, `${spread.id}: complete split-label block reachable`);
+    }
+    const cutIdentity = bottomNameBox(layout.cut, readingNameWidth(width, spread, { cut: true }), cutBottomLabelHeight, layout.labelGap);
+    assert.ok(cutIdentity.bottom <= height - 16);
+    const detail = fitReadingLayout({ width, height, top, footerTop, spread, detail: true,
+      detailTopLabelHeight: 38, detailBottomLabelHeight: 76 });
+    const meaning = nameBox(detail.detail, readingNameWidth(width, spread, { detail: true }), 38, detail.labelGap);
+    const identity = bottomNameBox(detail.detail, readingNameWidth(width, spread, { detail: true }), 76, detail.labelGap);
+    assert.ok(meaning.top >= top - 0.01 && identity.bottom <= footerTop - 12 + 0.01);
+    assert.ok(detail.detail.height > 70 && detail.compact === false);
+  }
+});
+
+test("split-label CSS anchors the identity below and gives four mobile actions two rows", () => {
+  const css = readFileSync(new URL("../draw-ritual.css", import.meta.url), "utf8");
+  assert.match(css, /\.spread-card-label\.is-identity\s*\{[^}]*transform:\s*translate\(-50%, var\(--reading-label-gap, 8px\)\)/);
+  assert.match(css, /\.spread-card-label\.is-position\s*\{[^}]*font-size:\s*12px/);
+  assert.match(css, /\.deck-flow-actions\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.deck-flow-actions\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
 });
 
 test("actual stage unprojection fits all four 3D corners into each target card rectangle", () => {

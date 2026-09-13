@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createDrawRitual } from "../draw-ritual.js";
 import { DRAW_SPREADS } from "../draw-spreads.js";
+import { SHUFFLE_TIMING } from "../ritual-layout.js";
 
 // Minimal event/element doubles exercise the real controller, without a browser or
 // production dependencies. These are state-machine tests, not visual-layout QA.
@@ -63,7 +64,11 @@ function harness(t, { method = "manual", prepareSelection = async () => {}, pref
     commitSelection: (index, session) => commits.push({ index, session }),
   });
   async function settle() { for (let i = 0; i < 12; i++) await Promise.resolve(); }
-  function advance(milliseconds) { now += milliseconds; const queued = [...frames.values()]; frames.clear(); queued.forEach((callback) => callback(now)); }
+  function stall(milliseconds) { now += milliseconds; const queued = [...frames.values()]; frames.clear(); queued.forEach((callback) => callback(now)); }
+  function advance(milliseconds) {
+    const end = now + milliseconds;
+    while (now < end) stall(Math.min(16, end - now));
+  }
   async function begin(spread = "free-3") {
     controller.open();
     get("draw-spread-options").children.find((button) => button.dataset.spread === spread).fire("click");
@@ -73,12 +78,12 @@ function harness(t, { method = "manual", prepareSelection = async () => {}, pref
   async function start(spread = "free-3", cut = true) {
     await begin(spread);
     if (method === "manual") get("draw-hold").fire("click");
-    advance(4500);
+    advance(SHUFFLE_TIMING.durationMs + 100);
     assert.equal(controller.session.phase, "shuffling", "completion waits for explicit cutting");
     if (cut) get("draw-collect").fire("click");
     assert.equal(controller.session.phase, cut ? "cutting" : "shuffling");
   }
-  return { controller, get, commits, preparations, prefetches, orders, begin, start, settle, advance, get cancelled() { return cancelled; } };
+  return { controller, get, commits, preparations, prefetches, orders, begin, start, settle, advance, stall, get cancelled() { return cancelled; } };
 }
 
 test("only confirmed cut and newly selected faces are prefetched, never the full ring", async (t) => {
@@ -183,7 +188,7 @@ test("light hand repeats complete cycles with a fresh random order, and never cu
     assert.equal(h.get("draw-collect").hidden, true);
     h.get("draw-collect").fire("click");
     assert.equal(h.controller.session.phase, "shuffling", "cannot cut partway through a repeat");
-    h.advance(4500);
+    h.advance(SHUFFLE_TIMING.durationMs + 100);
     assert.equal(h.controller.visual.progress, 1);
     assert.equal(h.controller.session.phase, "shuffling");
     previous = h.controller.session;
@@ -203,13 +208,13 @@ test("releasing a completed hold does not replay; a new pointer click does", asy
   const paused = h.controller.visual.progress;
   h.advance(2000); assert.equal(h.controller.visual.progress, paused);
   hand.fire("pointerdown", { button: 0, pointerId: 2 });
-  h.advance(3500); const completed = h.controller.session;
+  h.advance(SHUFFLE_TIMING.durationMs - 1000 + 100); const completed = h.controller.session;
   hand.fire("pointerup"); hand.fire("click", { detail: 1 });
   assert.equal(h.controller.session, completed);
   hand.fire("pointerdown", { button: 0, pointerId: 3 });
   hand.fire("pointerup"); hand.fire("click", { detail: 1 });
   assert.notEqual(h.controller.session, completed);
-  h.advance(4500); assert.equal(h.controller.visual.progress, 1);
+  h.advance(SHUFFLE_TIMING.durationMs + 100); assert.equal(h.controller.visual.progress, 1);
 });
 
 test("fate can also repeat and suspends timed progress when the document is hidden", async (t) => {
@@ -219,12 +224,33 @@ test("fate can also repeat and suspends timed progress when the document is hidd
   const progress = h.controller.visual.progress;
   h.advance(20000); assert.equal(h.controller.visual.progress, progress);
   document.hidden = false; document.fire("visibilitychange");
-  h.advance(3500); assert.equal(h.controller.visual.progress, 1);
+  h.advance(SHUFFLE_TIMING.durationMs - 1000 + 100); assert.equal(h.controller.visual.progress, 1);
   assert.equal(h.get("draw-hold").hidden, false);
   const before = h.controller.session;
-  h.get("draw-hold").fire("click"); h.advance(4500);
+  h.get("draw-hold").fire("click"); h.advance(SHUFFLE_TIMING.durationMs + 100);
   assert.notEqual(h.controller.session, before);
   assert.equal(h.controller.session.cut, null);
   h.get("draw-collect").fire("click"); h.controller.choose(8); await h.settle();
   assert.equal(h.commits.length, 1); assert.equal(h.commits[0].session.draws.length, 1);
+});
+
+test("held shuffle exposes the central-light interval and delayed frames cannot skip it", async (t) => {
+  const h = harness(t); await h.begin();
+  h.get("draw-hold").fire("pointerdown", { button: 0, pointerId: 1 });
+  h.advance(SHUFFLE_TIMING.chargeStartMs);
+  assert.match(h.get("draw-progress-label").textContent, /聚光停留/);
+  assert.equal(h.get("draw-collect").hidden, true);
+  h.stall(1500);
+  assert.equal(Math.round(h.controller.visual.progress * SHUFFLE_TIMING.durationMs), SHUFFLE_TIMING.chargeStartMs + 100);
+  assert.match(h.get("draw-progress-label").textContent, /聚光停留/);
+  h.get("draw-hold").fire("pointerup");
+  const paused = h.controller.visual.progress;
+  h.advance(1200); assert.equal(h.controller.visual.progress, paused);
+  h.get("draw-hold").fire("pointerdown", { button: 0, pointerId: 2 });
+  h.advance(SHUFFLE_TIMING.burstStartMs - SHUFFLE_TIMING.chargeStartMs - 100);
+  assert.match(h.get("draw-progress-label").textContent, /聚光停留/);
+  h.advance(40); assert.match(h.get("draw-progress-label").textContent, /炸散展開/);
+  h.advance(SHUFFLE_TIMING.durationMs);
+  assert.equal(h.controller.visual.progress, 1);
+  assert.equal(h.controller.session.phase, "shuffling", "bright hold never implicitly cuts the deck");
 });

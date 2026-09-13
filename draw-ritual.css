@@ -109,8 +109,11 @@
 .inspection[data-reading-active="true"] .mode-tabs { display: none; }
 .inspection[data-ritual-phase] #spread-result { visibility: hidden; pointer-events: none; }
 .spread-card-label { position: absolute; width: 110px; transform: translate(-50%, calc(-100% - var(--reading-label-gap, 8px))); padding: 0; border: 0; border-radius: 3px; background: transparent; text-align: center; text-shadow: 0 2px 8px #000; line-height: 1.2; cursor: pointer; pointer-events: auto; touch-action: none; }
+.spread-card-label.is-position { color: #d8d1c4; font-size: 12px; line-height: 1.35; }
+.spread-card-label.is-identity { transform: translate(-50%, var(--reading-label-gap, 8px)); }
 .spread-card-label strong { display: block; overflow: visible; overflow-wrap: anywhere; white-space: normal; font-size: 14px; font-weight: 500; color: #f5deb0; }
 .spread-card-label.is-detail strong { display: block; overflow: visible; font-size: 16px; }
+.spread-card-label.is-detail.is-position { font-size: 14px; }
 .spread-card-context { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 2px 6px; margin-top: 3px; color: #d8d1c4; font-size: 12px; line-height: 1.35; }
 .spread-card-position { min-width: 0; max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
 .spread-card-orientation { flex-shrink: 0; white-space: nowrap; color: #a6ddc5; }
@@ -128,7 +131,7 @@
 .inspection[data-reading-active="true"] .reading-result-strip,
 .inspection[data-reading-active="true"][data-reading-detail="false"] .card-actions { display: none; }
 .inspection[data-reading-active="true"] #reading-question { display: none; }
-.inspection[data-reading-active="true"] .deck-flow-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 4px; }
+.inspection[data-reading-active="true"] .deck-flow-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin-top: 4px; }
 .inspection[data-reading-active="true"] .deck-flow-actions button { min-height: 44px; padding: 5px; font-size: 14px; }
 .inspection[data-reading-active="true"] .deck-flow-actions small { display: none; }
 .inspection[data-reading-active="true"] .card-actions { position: static; justify-content: flex-end; margin-top: 3px; }
@@ -142,6 +145,7 @@
   .inspection[data-reading-active="true"] .card-actions { position: static; justify-content: flex-end; margin-top: 3px; }
   .inspection[data-reading-active="true"] #reading-method { display: none; }
   .inspection[data-reading-active="true"] #reading-result-status { display: block; text-align: left; font-size: 12px; }
+  .inspection[data-reading-active="true"] .deck-flow-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .inspection[data-reading-active="true"] .deck-flow-actions button { font-size: 14px; min-height: 44px; overflow-wrap: anywhere; }
 }
 @media (max-height: 560px) {
@@ -160,6 +164,7 @@
   .inspection[data-reading-compact="true"] #spread-result-summary { font-size: 10.5px; line-height: 1.2; }
   .inspection[data-reading-compact="true"] #spread-result-title { margin: 3px 0 0; font-size: 20px; line-height: 1.1; }
   .inspection[data-reading-compact="true"] .spread-card-label { line-height: 1.12; }
+  .inspection[data-reading-compact="true"] .spread-card-label.is-position { font-size: 10.5px; line-height: 1.15; }
   .inspection[data-reading-compact="true"] .spread-card-label strong { font-size: 12.5px; }
   .inspection[data-reading-compact="true"] .spread-card-context { margin-top: 1px; gap: 1px 4px; font-size: 10.5px; line-height: 1.15; }
   .inspection[data-reading-compact="true"] #card-controls { padding: 4px; }
