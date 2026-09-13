@@ -11,6 +11,7 @@ import { getCardDisplayName } from "./card-names.js?v=20260913-04";
 import { createRingSelection } from "./ring-selection.js?v=20260913-05";
 import { getCardFlipPose } from "./card-flip.js?v=20260913-05";
 import { createReadingExportModel, renderReadingExport, readingExportBlob } from "./reading-export.js?v=20260913-06";
+import { createReadingImageShare } from "./reading-share.js?v=20260913-07";
 import { calculateDeckCarouselCameraFit } from "./deck-carousel-fit.js?v=20260913-06";
 
 
@@ -947,9 +948,14 @@ cardCatalogToggle.addEventListener("click", () => {
 });
 document.querySelector("#reveal-reading").addEventListener("click", revealReading);
 document.querySelector("#export-reading").addEventListener("click", exportReadingImage);
+const readingImageShare = createReadingImageShare({
+  button: document.querySelector("#reading-export-share"),
+  status: document.querySelector("#reading-export-status"),
+});
 document.querySelector("#reading-export-close").addEventListener("click", () => document.querySelector("#reading-export-dialog").close());
 document.querySelector("#reading-export-dialog").addEventListener("keydown", (event) => event.stopPropagation());
 document.querySelector("#reading-export-dialog").addEventListener("close", () => {
+  readingImageShare.clear();
   const oldUrl = readingExportUrl;
   readingExportUrl = null;
   document.querySelector("#reading-export-image").removeAttribute("src");
@@ -1914,6 +1920,7 @@ async function exportReadingImage() {
     deckName: DECKS[activeDeckKey].header, displayName: getCardDisplayName });
   const backImage = textures[`${activeDeckKey}:${DECKS[activeDeckKey].cardBack}`]?.image;
   exportingReading = true; button.disabled = true;
+  readingImageShare.clear();
   status.textContent = "正在建立完整牌陣圖片…";
   preview.hidden = download.hidden = openImage.hidden = true;
   dialog.showModal();
@@ -1934,7 +1941,7 @@ async function exportReadingImage() {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     download.download = `塔羅-${getDrawSpread(model.spreadId).name}-${stamp}.png`;
     preview.hidden = download.hidden = openImage.hidden = false;
-    status.textContent = "完整牌陣已備妥，包含牌位、牌名、正逆位與切牌，不含操作按鈕。尚未翻牌的卡片保留牌背；手機也可長按下圖儲存。";
+    readingImageShare.prepare(blob, download.download);
   } catch (error) {
     if (dialog.open) status.textContent = "圖片暫時無法建立，請關閉後重試；本輪抽牌不會改變。";
     console.warn("[arcana] reading export failed", error);

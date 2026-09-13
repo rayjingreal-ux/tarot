@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="./styles.css?v=20260913-06-frame2" />
     <link rel="stylesheet" href="./draw-ritual.css?v=20260913-06" />
     <link rel="stylesheet" href="./ring-selection.css?v=20260913-05" />
-    <link rel="stylesheet" href="./reading-export.css?v=20260913-06" />
+    <link rel="stylesheet" href="./reading-export.css?v=20260913-07-share2" />
     <script type="importmap">
       {
         "imports": {
@@ -289,8 +289,9 @@
       <dialog id="reading-export-dialog" aria-labelledby="reading-export-title">
         <header><h2 id="reading-export-title">儲存完整牌陣</h2><button id="reading-export-close" type="button" aria-label="關閉圖片預覽">×</button></header>
         <p id="reading-export-status" role="status"></p>
+        <p id="reading-export-help">iPhone 請使用下方「分享圖片」；Safari 工具列的分享仍會分享網頁網址。</p>
         <img id="reading-export-image" alt="完整牌陣：包含所有主牌、宮位文字、牌名正逆位與左下角切牌" hidden />
-        <footer><a id="reading-export-download" download hidden>下載 PNG 圖片</a><a id="reading-export-open" target="_blank" rel="noopener" hidden>開啟圖片另存</a></footer>
+        <footer><button id="reading-export-share" type="button" aria-describedby="reading-export-help" hidden disabled>分享圖片</button><a id="reading-export-download" download hidden>下載 PNG 圖片</a><a id="reading-export-open" target="_blank" rel="noopener" hidden>開啟圖片另存</a></footer>
       </dialog>
     </main>
 
@@ -299,6 +300,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260913-06"></script>
+    <script type="module" src="./app.js?v=20260913-07"></script>
   </body>
 </html>

@@ -30,6 +30,7 @@ GitHub Pages：<https://rayjingreal-ux.github.io/tarot/>
 - 依螢幕大小、完整換行的牌名與上下操作區自動調整牌面大小；手機大型牌陣可上下滑動原 3D 牌卡，切牌固定左下，單張放大保持整張牌可見
 - 十二宮位手機總覽使用較緊密文字與上下間距，保留十二宮及中央指引共 13 張主牌；一般直式手機可完整呈現，短螢幕／較長牌名仍可捲動，不裁掉文字
 - 「儲存牌陣」在本機產生完整 PNG：包含所有主牌、牌位文字、中文牌名、正逆位與左下切牌，不含操作按鈕，不受手機捲動或單張放大限制；可下載、開啟圖片另存或長按儲存
+- 預覽中的「分享圖片」將事先準備好的 PNG 檔案交給 iPhone／支援瀏覽器的系統分享，不附網址。取消可重試；不支援時保留下載／長按另存。Safari 工具列的分享仍是網頁分享，請使用站內按鈕
 - Prose Poem 的教皇與寶劍十 A/B 圖稿以同一牌義等機率抽取，一般瀏覽仍保留全部 80 張
 - 四副牌組的一般瀏覽／管理模式
 - The Unveiled、Red Visions 與 Prose Poem 的獨立校正工作檯
@@ -61,6 +62,7 @@ python -m http.server 8877
 - `texture-loading.js`：外盒優先、按副載入、快取去重與失敗重試
 - `reading-layout.js`：依實際牌名高度、手機安全範圍與原牌陣位置計算結果排版
 - `reading-export.js` / `reading-export.css`：完整牌陣 PNG 排版、圖片預覽與下載，未翻牌保留牌背
+- `reading-share.js`：PNG 檔案分享、能力偵測、取消重試與預覽生命週期保護
 - `deck-carousel-fit.js`：計算輪播牌盒旋轉、俯仰及浮動時的安全框範圍
 - `card-names.js`：保留牌組中文名並補足標準塔羅牌的中文顯示名稱
 - `tests/*.test.mjs`：四副牌組、抽牌規則、舞台排版與光效測試（`node --test tests/*.test.mjs`）
@@ -72,6 +74,7 @@ python -m http.server 8877
 - `RELEASE-20260913-04.md`：恢復中文牌名、牌位意義與正逆位文字
 - `RELEASE-20260913-05.md`：完整星環選牌、3D 翻轉與手機十二宮位排版
 - `RELEASE-20260913-06.md`：柔霧牌盒、聚光洗牌、上下標籤與完整牌陣下載
+- `RELEASE-20260913-07.md`：iPhone 直接分享 PNG 圖片而非網址
 - `assets/cards/`：78 張透明 WebP 發佈牌圖
 - `assets/woodland/`：Woodland 牌盒與說明書材質
 - `assets/unveiled/`：The Unveiled 牌盒材質、80 張牌面、縮圖、清單與實體牌背

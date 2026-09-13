@@ -8,3 +8,6 @@
 #reading-export-image { display: block; width: 100%; height: auto; margin: 12px 0; border-radius: 6px; }
 #reading-export-dialog footer { display: flex; flex-wrap: wrap; gap: 10px; position: sticky; bottom: -20px; margin-inline: -20px; padding: 12px 20px; background: #091613f5; }
 #reading-export-dialog [hidden] { display: none !important; }
+#reading-export-dialog #reading-export-share { flex: 1 0 100%; background: #d8b76f; color: #142019; font-weight: 700; }
+#reading-export-dialog button:disabled { opacity: .5; cursor: default; }
+#reading-export-help { color: #bdc9bd; }
