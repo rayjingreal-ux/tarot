@@ -53,6 +53,30 @@ test("single-card detail enlarges without cropping, including a long fully wrapp
   }
 });
 
+test("visible slot meanings and orientation rows are included in mobile label spacing", () => {
+  for (const screen of screens) for (const spread of DRAW_SPREADS) {
+    // Include narrow-column wrapping of the full name and both metadata fields.
+    const labelHeight = screen.width <= 320 ? 105 : screen.width <= 390 ? 88 : 56, cutLabelHeight = 53;
+    const layout = fitReadingLayout({ ...screen, spread, mainLabelHeight: labelHeight, cutLabelHeight });
+    const names = layout.cards.map((card) => nameBox(card, readingNameWidth(screen.width, spread), labelHeight));
+    const cards = layout.cards.map(cardBox);
+    const cutName = nameBox(layout.cut, readingNameWidth(screen.width, spread, { cut: true }), cutLabelHeight);
+    assert.ok(layout.bottom < cutName.top, `${spread.id}: main viewport clears all cut text`);
+    for (let i = 0; i < names.length; i++) {
+      assert.ok(layout.cards[i].height >= 48, `${spread.id}: readable touch target on short landscape screens`);
+      assert.ok(layout.cards[i].height + labelHeight + 8 <= layout.viewportHeight + 0.01, `${spread.id}: complete label and card fit together`);
+      assert.ok(names[i].right <= screen.width - 23 && names[i].left >= 23);
+      for (let j = 0; j < cards.length; j++) assert.ok(!overlaps(names[i], cards[j]), `${spread.id}: metadata covers a card`);
+      const maxOffset = Math.max(0, layout.contentHeight - layout.viewportHeight);
+      const offset = Math.max(0, Math.min(names[i].top - screen.top, maxOffset));
+      assert.ok(names[i].top - offset >= screen.top - 0.01 && cards[i].bottom - offset <= layout.bottom + 0.01, `${spread.id}: complete block is reachable`);
+    }
+    const detail = fitReadingLayout({ ...screen, spread, detail: true, detailLabelHeight: 84 }).detail;
+    assert.ok(nameBox(detail, readingNameWidth(screen.width, spread, { detail: true }), 84).top >= screen.top - 0.01);
+    assert.ok(cardBox(detail).bottom <= screen.footerTop - 11);
+  }
+});
+
 test("actual stage unprojection fits all four 3D corners into each target card rectangle", () => {
   const source = readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const body = source.match(/^function screenToReadingPlane\([^]*?^}/m)?.[0];

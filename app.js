@@ -7,6 +7,7 @@ import { getRitualCardPose } from "./ritual-layout.js?v=20260913-02";
 import { getDrawSpread, getReadingCardPose } from "./draw-spreads.js?v=20260913-01";
 import { createDeckTexturePlan, createDeckTextureCache, getTextureUrl } from "./texture-loading.js?v=20260913-02";
 import { fitReadingLayout, readingNameWidth } from "./reading-layout.js?v=20260913-03";
+import { getCardDisplayName } from "./card-names.js?v=20260913-04";
 
 
 const MAJOR_ARCANA = [
@@ -1799,7 +1800,7 @@ function updateSelectedCardInfo(loadingFace = false) {
   }
   const entry = readingEntries().find((card) => card.index === selectedCard);
   cardIndex.textContent = `ARCANA ${CARDS[selectedCard].numeral}${entry ? ` · ${entry.reversed ? "逆位" : "正位"}` : ""}`;
-  cardName.textContent = CARDS[selectedCard].name;
+  cardName.textContent = getCardDisplayName(CARDS[selectedCard]);
 }
 
 function updateReadingResult() {
@@ -1828,16 +1829,25 @@ function updateReadingResult() {
   readingEntries().forEach((entry, slot) => {
     const cut = entry === session.cut;
     const position = cut ? "切牌" : `${slot + 1} · ${spread.slots[slot].label}`;
-    const identity = entry.faceUp ? `${CARDS[entry.index].name} · ${entry.reversed ? "逆位" : "正位"}` : "尚未翻牌";
+    const displayName = getCardDisplayName(CARDS[entry.index]);
+    const identity = entry.faceUp ? `${displayName} · ${entry.reversed ? "逆位" : "正位"}` : "尚未翻牌";
     const label = document.createElement("button");
     label.type = "button";
     label.className = `spread-card-label${cut ? " is-cut" : ""}`;
     label.dataset.readingIndex = String(entry.index);
-    label.title = `${position} · ${identity}`;
+    label.title = `${position} · ${identity}${entry.faceUp && displayName !== CARDS[entry.index].name ? ` · ${CARDS[entry.index].name}` : ""}`;
     label.setAttribute("aria-label", `${position}，${identity}，${entry.faceUp ? "放大檢視" : "翻開牌面"}`);
     label.setAttribute("aria-expanded", String(readingResult.detail === entry.index));
-    const title = document.createElement("strong"); title.textContent = entry.faceUp ? CARDS[entry.index].name : "尚未翻牌";
-    label.append(title);
+    const title = document.createElement("strong"); title.textContent = entry.faceUp ? displayName : "尚未翻牌";
+    const context = document.createElement("span"); context.className = "spread-card-context";
+    const meaning = document.createElement("span"); meaning.className = "spread-card-position";
+    meaning.textContent = cut ? "切牌" : spread.slots[slot].label;
+    const orientation = document.createElement("span"); orientation.className = "spread-card-orientation";
+    orientation.hidden = !entry.faceUp;
+    orientation.textContent = entry.faceUp ? (entry.reversed ? "逆位" : "正位") : "";
+    if (entry.faceUp) orientation.dataset.orientation = entry.reversed ? "reversed" : "upright";
+    context.append(meaning, orientation);
+    label.append(title, context);
     labels.append(label);
   });
   if (focusedIndex !== null) labels.querySelector(`[data-reading-index="${focusedIndex}"]`)?.focus({ preventScroll: true });

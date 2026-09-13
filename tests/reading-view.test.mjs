@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import { getDrawSpread } from "../draw-spreads.js";
+import { DRAW_SPREADS, getDrawSpread } from "../draw-spreads.js";
+import { getCardDisplayName } from "../card-names.js";
 
 // Execute the real app functions with state/element doubles, without browser QA.
 const source = readFileSync(new URL("../app.js", import.meta.url), "utf8");
@@ -78,17 +79,49 @@ test("each revealed name appears in overview; hidden cards never disclose identi
   const session = { spreadId: "free-2", method: "manual", drawCount: 2, draws: [{ index: 0, faceUp: true, reversed: true }, { index: 1, faceUp: false, reversed: false }], cut: { index: 2, faceUp: true, reversed: false } };
   const state = bind(["readingEntries", "updateReadingResult"], {
     readingResult: { session, detail: null }, activeMode: "cards", inspection: new Element(), revealingResult: null,
-    syncReadingArtifactVisibility() {}, getDrawSpread,
+    syncReadingArtifactVisibility() {}, getDrawSpread, getCardDisplayName,
     CARDS: [{ name: "THE FOOL" }, { name: "SECRET CARD" }, { name: "THE STAR" }],
     document: { querySelector: get, createElement: () => new Element(), activeElement: null },
   });
   state.updateReadingResult();
   const labels = get("#spread-result-labels").children;
-  assert.deepEqual(labels.map((label) => label.children[0].textContent), ["THE FOOL", "尚未翻牌", "THE STAR"]);
+  assert.deepEqual(labels.map((label) => label.children[0].textContent), ["愚者", "尚未翻牌", "星星"]);
+  assert.ok(labels[0].title.includes("THE FOOL"), "original English name is retained in the tooltip");
   assert.ok(labels[0]["aria-label"].includes("逆位"));
   assert.ok(labels[2]["aria-label"].includes("切牌"));
+  assert.deepEqual(labels.map((label) => label.children[1].children[0].textContent), ["第 1 張", "第 2 張", "切牌"]);
+  assert.deepEqual(labels.map((label) => label.children[1].children[1].textContent), ["逆位", "", "正位"]);
+  assert.equal(labels[0].children[1].children[1].hidden, false, "orientation must be visible, not tooltip-only");
+  assert.equal(labels[1].children[1].children[1].hidden, true);
+  assert.equal(labels[1].children[1].children[1].dataset.orientation, undefined, "face-down direction is not exposed");
   assert.ok(!JSON.stringify(labels[1]).includes("SECRET CARD"));
   assert.ok(labels.every((label) => label.type === "button"), "names remain keyboard accessible");
+
+  session.draws[0].faceUp = false;
+  state.updateReadingResult();
+  const faceDownLabel = get("#spread-result-labels").children[0];
+  assert.equal(faceDownLabel.children[1].children[0].textContent, "第 1 張");
+  assert.equal(faceDownLabel.children[1].children[1].hidden, true);
+  assert.ok(!JSON.stringify(faceDownLabel).includes("愚者") && !JSON.stringify(faceDownLabel).includes("THE FOOL"));
+
+  for (const spread of DRAW_SPREADS) {
+    session.spreadId = spread.id; session.drawCount = spread.count;
+    session.draws = spread.slots.map((_, index) => ({ index, faceUp: true, reversed: index % 2 === 0 }));
+    session.cut = { index: spread.count, faceUp: true, reversed: true };
+    state.CARDS = Array.from({ length: spread.count + 1 }, (_, index) => ({ name: `ORIGINAL ${index}`, nameZh: `牌組中文名${index}` }));
+    for (const detail of [null, 0, session.cut.index]) {
+      state.readingResult.detail = detail;
+      state.updateReadingResult();
+      const allLabels = get("#spread-result-labels").children;
+      for (const [index, label] of allLabels.entries()) {
+        const entry = index === spread.count ? session.cut : session.draws[index];
+        assert.equal(label.children[0].textContent, `牌組中文名${index}`);
+        assert.equal(label.children[1].children[0].textContent, index === spread.count ? "切牌" : spread.slots[index].label);
+        assert.equal(label.children[1].children[1].textContent, entry.reversed ? "逆位" : "正位");
+        assert.equal(label.children[1].children[1].hidden, false);
+      }
+    }
+  }
 });
 
 test("result markup removes the bottom numeric/cut strip and binds background return", () => {
