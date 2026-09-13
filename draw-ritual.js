@@ -259,17 +259,27 @@ export function createDrawRitual(adapter) {
     }
   }
 
+  function prefetchChosen(entries) {
+    const chosenSession = session;
+    if (!entries.length || !adapter.prefetchSelection) return;
+    // Warm only confirmed identities; delivery remains the retry/error boundary.
+    Promise.resolve().then(() => {
+      if (session === chosenSession && !surface.hidden) return adapter.prefetchSelection(entries.map((entry) => entry.index), chosenSession);
+    }).catch(() => {});
+  }
+
   function choose(position = null) {
     if (!session || pending || !["cutting", "selecting"].includes(session.phase)) return;
-    if (!automatic && performance.now() < chooseReadyAt) return;
+    if (!automatic && position !== null && performance.now() < chooseReadyAt) return;
     if (session.phase === "cutting") {
       const cutPosition = position ?? Math.floor(Math.random() * session.order.length);
       cutDrawDeck(session, cutPosition);
+      prefetchChosen([session.cut]);
       // Ignore the second tap of a cut double-click while shuffled positions rotate.
       chooseReadyAt = performance.now() + 350;
       visual.focus = 0;
       adapter.orderChanged?.(session);
-      phase("selecting", "依照牌位，選出你的牌", `切牌已保留在左下角；請再抽 ${session.drawCount} 張主牌。`);
+      phase("selecting", "讓直覺，在星環中選擇", `剩餘 ${session.order.length} 張牌背全部展開。拖曳旋轉，點牌放大，再確認抽取 ${session.drawCount} 張主牌。`);
       find("draw-auto-pick").textContent = "自動補齊主牌";
       buildChoices();
       if (automatic) choose();
@@ -277,11 +287,15 @@ export function createDrawRitual(adapter) {
       return;
     }
     if (position !== null && !availableDrawPositions(session).includes(position)) return;
+    const previousCount = session.draws.length;
     if (position === null) {
       session.method = "starlight";
       while (session.phase === "selecting") autoPickDrawCard(session);
     }
     else pickDrawCard(session, position);
+    // Let the next preview settle before accepting another physical card tap.
+    if (session.draws.length > previousCount) chooseReadyAt = performance.now() + 350;
+    prefetchChosen(session.draws.slice(previousCount));
     if (session.phase === "selecting") {
       buildChoices();
       adapter.focusChoices?.();

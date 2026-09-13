@@ -108,7 +108,7 @@
 .inspection[data-reading-active="true"] .artifact-copy { opacity: 0; visibility: hidden; pointer-events: none; }
 .inspection[data-reading-active="true"] .mode-tabs { display: none; }
 .inspection[data-ritual-phase] #spread-result { visibility: hidden; pointer-events: none; }
-.spread-card-label { position: absolute; width: 110px; transform: translate(-50%, calc(-100% - 6px)); padding: 0; border: 0; border-radius: 3px; background: transparent; text-align: center; text-shadow: 0 2px 8px #000; line-height: 1.2; cursor: pointer; pointer-events: auto; touch-action: none; }
+.spread-card-label { position: absolute; width: 110px; transform: translate(-50%, calc(-100% - var(--reading-label-gap, 8px))); padding: 0; border: 0; border-radius: 3px; background: transparent; text-align: center; text-shadow: 0 2px 8px #000; line-height: 1.2; cursor: pointer; pointer-events: auto; touch-action: none; }
 .spread-card-label strong { display: block; overflow: visible; overflow-wrap: anywhere; white-space: normal; font-size: 14px; font-weight: 500; color: #f5deb0; }
 .spread-card-label.is-detail strong { display: block; overflow: visible; font-size: 16px; }
 .spread-card-context { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 2px 6px; margin-top: 3px; color: #d8d1c4; font-size: 12px; line-height: 1.35; }
@@ -151,6 +151,20 @@
 }
 @media (max-width: 680px) and (max-height: 560px) {
   #spread-result > header { top: 66px; }
+}
+
+/* Keep every house, its full meaning and direction visible on normal portrait
+   phones. Short screens and unusually long titles retain scroll fallback. */
+@media (max-width: 680px) {
+  .inspection[data-reading-compact="true"] #spread-result > header { top: 62px; left: 10px; right: 10px; }
+  .inspection[data-reading-compact="true"] #spread-result-summary { font-size: 10.5px; line-height: 1.2; }
+  .inspection[data-reading-compact="true"] #spread-result-title { margin: 3px 0 0; font-size: 20px; line-height: 1.1; }
+  .inspection[data-reading-compact="true"] .spread-card-label { line-height: 1.12; }
+  .inspection[data-reading-compact="true"] .spread-card-label strong { font-size: 12.5px; }
+  .inspection[data-reading-compact="true"] .spread-card-context { margin-top: 1px; gap: 1px 4px; font-size: 10.5px; line-height: 1.15; }
+  .inspection[data-reading-compact="true"] #card-controls { padding: 4px; }
+  .inspection[data-reading-compact="true"] .deck-flow-actions { margin-top: 2px; gap: 3px; }
+  .inspection[data-reading-compact="true"] .deck-flow-actions button { min-height: 44px; padding: 3px; font-size: 12px; }
 }
 
 .ritual-step-button {

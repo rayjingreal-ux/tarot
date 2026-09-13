@@ -7,7 +7,8 @@
     <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
     <title>Arcana Cabinet｜塔羅藏書室</title>
     <link rel="stylesheet" href="./styles.css?v=20260913-02" />
-    <link rel="stylesheet" href="./draw-ritual.css?v=20260913-04" />
+    <link rel="stylesheet" href="./draw-ritual.css?v=20260913-05" />
+    <link rel="stylesheet" href="./ring-selection.css?v=20260913-05" />
     <script type="importmap">
       {
         "imports": {
@@ -216,6 +217,7 @@
               </section>
 
               <section class="draw-panel draw-selecting" data-draw-panel="selecting" aria-labelledby="draw-selecting-title" hidden>
+                <button id="draw-ring-confirm" type="button" aria-label="抽取中央放大的牌背" hidden><span>抽取這張牌</span></button>
                 <div class="draw-selection-head">
                   <div>
                     <span>TRUST THE FIRST PULL</span>
@@ -289,6 +291,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260913-04"></script>
+    <script type="module" src="./app.js?v=20260913-05"></script>
   </body>
 </html>

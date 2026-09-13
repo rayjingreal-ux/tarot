@@ -5,7 +5,7 @@ import { DRAW_SPREADS } from "../draw-spreads.js";
 
 // Minimal event/element doubles exercise the real controller, without a browser or
 // production dependencies. These are state-machine tests, not visual-layout QA.
-function harness(t, { method = "manual", prepareSelection = async () => {} } = {}) {
+function harness(t, { method = "manual", prepareSelection = async () => {}, prefetchSelection = async () => {} } = {}) {
   const elements = new Map(), frames = new Map(); let now = 0, nextFrame = 0;
   const classes = () => {
     const values = new Set();
@@ -52,12 +52,13 @@ function harness(t, { method = "manual", prepareSelection = async () => {} } = {
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   t.after(() => { for (const [key, descriptor] of Object.entries(saved)) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; } });
   get("draw-ritual").hidden = true;
-  const commits = [], preparations = [], orders = []; let cancelled = 0;
+  const commits = [], preparations = [], prefetches = [], orders = []; let cancelled = 0;
   const controller = createDrawRitual({
     getContext: () => ({ deckKey: "test", name: "Test deck", backUrl: "back.webp" }), onOpen() {},
     loadDeck: async () => Array.from({ length: 78 }, (_, index) => ({ id: `card-${index}` })),
     startAnimation() {}, cancelAnimation() { cancelled++; }, focusResult() {}, focusChoices() {},
     orderChanged(session) { orders.push(session.order.slice()); },
+    prefetchSelection: async (indices, session) => { prefetches.push({ indices, session }); await prefetchSelection(indices, session); },
     prepareSelection: async (indices, session) => { preparations.push({ indices, session }); await prepareSelection(indices, session); },
     commitSelection: (index, session) => commits.push({ index, session }),
   });
@@ -77,8 +78,39 @@ function harness(t, { method = "manual", prepareSelection = async () => {} } = {
     if (cut) get("draw-collect").fire("click");
     assert.equal(controller.session.phase, cut ? "cutting" : "shuffling");
   }
-  return { controller, get, commits, preparations, orders, begin, start, settle, advance, get cancelled() { return cancelled; } };
+  return { controller, get, commits, preparations, prefetches, orders, begin, start, settle, advance, get cancelled() { return cancelled; } };
 }
+
+test("only confirmed cut and newly selected faces are prefetched, never the full ring", async (t) => {
+  const h = harness(t, { prefetchSelection: async () => { throw new Error("optional prefetch failed"); } });
+  await h.start("free-3"); assert.equal(h.prefetches.length, 0);
+  h.controller.choose(7); await h.settle();
+  assert.deepEqual(h.prefetches[0].indices, [h.controller.session.cut.index]);
+  h.advance(500); h.controller.focusChoice(12, false); await h.settle();
+  assert.equal(h.prefetches.length, 1, "previewing a back does not download its face");
+  h.controller.choose(12); await h.settle();
+  assert.deepEqual(h.prefetches[1].indices, [h.controller.session.draws[0].index]);
+  h.controller.choose(); await h.settle();
+  assert.equal(h.commits.length, 1, "prefetch errors do not prevent authoritative delivery");
+  assert.equal(h.prefetches.flatMap((item) => item.indices).length, 4);
+  assert.equal(new Set(h.prefetches.flatMap((item) => item.indices)).size, 4);
+});
+
+test("cancel before the prefetch microtask prevents stale face downloads", async (t) => {
+  const h = harness(t); await h.start();
+  h.controller.choose(7); h.controller.cancel(); await h.settle();
+  assert.equal(h.prefetches.length, 0); assert.equal(h.commits.length, 0);
+});
+
+test("double-clicking the centre preview does not accidentally draw the next card", async (t) => {
+  const h = harness(t); await h.start(); h.controller.choose(7); h.advance(500);
+  h.controller.choose(12); h.controller.choose(13);
+  assert.equal(h.controller.session.draws.length, 1);
+  h.advance(350); h.controller.choose(13);
+  assert.equal(h.controller.session.draws.length, 2);
+  h.controller.choose(); await h.settle();
+  assert.equal(h.commits.length, 1, "explicit auto-fill remains available during tap cooldown");
+});
 
 test("controller completes all fourteen layouts only after cut plus the selected count", async (t) => {
   const h = harness(t);

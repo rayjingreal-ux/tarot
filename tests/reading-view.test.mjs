@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { DRAW_SPREADS, getDrawSpread } from "../draw-spreads.js";
 import { getCardDisplayName } from "../card-names.js";
+import * as THREE from "../vendor/three/three.module.js";
+import { getCardFlipPose } from "../card-flip.js";
 
 // Execute the real app functions with state/element doubles, without browser QA.
 const source = readFileSync(new URL("../app.js", import.meta.url), "utf8");
@@ -56,13 +58,14 @@ test("blank-space overview preserves card selection, order, cut and orientations
 test("card and name activation reveal first, then enlarge, including the separate cut", () => {
   const calls = [], entries = [{ index: 8, faceUp: false }, { index: 22, faceUp: true }];
   const state = bind(["activateReadingCard"], {
-    readingResult: {}, drawRitual: { isOpen: false }, isCardTransitionActive: () => false,
+    readingResult: {}, readingFlips: new Map(), drawRitual: { isOpen: false }, isCardTransitionActive: () => false,
     readingEntries: () => entries, focusReadingCard: (index, detail) => calls.push([index, detail]), flipSelectedCard: () => calls.push("flip"),
   });
   state.activateReadingCard(8); assert.deepEqual(calls, [[8, false], "flip"]);
   entries[0].faceUp = true; state.activateReadingCard(8); assert.deepEqual(calls.at(-1), [8, true]);
   state.activateReadingCard(22); assert.deepEqual(calls.at(-1), [22, true]);
   const count = calls.length; state.activateReadingCard(77); assert.equal(calls.length, count);
+  state.readingFlips.set(8, {}); state.activateReadingCard(8); assert.equal(calls.length, count, "an in-flight flip cannot open detail or restart");
   state.drawRitual.isOpen = true; state.activateReadingCard(8); assert.equal(calls.length, count);
 });
 
@@ -78,7 +81,7 @@ test("each revealed name appears in overview; hidden cards never disclose identi
   const get = (id) => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
   const session = { spreadId: "free-2", method: "manual", drawCount: 2, draws: [{ index: 0, faceUp: true, reversed: true }, { index: 1, faceUp: false, reversed: false }], cut: { index: 2, faceUp: true, reversed: false } };
   const state = bind(["readingEntries", "updateReadingResult"], {
-    readingResult: { session, detail: null }, activeMode: "cards", inspection: new Element(), revealingResult: null,
+    readingResult: { session, detail: null }, readingFlips: new Map(), activeMode: "cards", inspection: new Element(), revealingResult: null,
     syncReadingArtifactVisibility() {}, getDrawSpread, getCardDisplayName,
     CARDS: [{ name: "THE FOOL" }, { name: "SECRET CARD" }, { name: "THE STAR" }],
     document: { querySelector: get, createElement: () => new Element(), activeElement: null },
@@ -96,6 +99,14 @@ test("each revealed name appears in overview; hidden cards never disclose identi
   assert.equal(labels[1].children[1].children[1].dataset.orientation, undefined, "face-down direction is not exposed");
   assert.ok(!JSON.stringify(labels[1]).includes("SECRET CARD"));
   assert.ok(labels.every((label) => label.type === "button"), "names remain keyboard accessible");
+
+  state.readingFlips.set(0, { result: state.readingResult });
+  state.updateReadingResult();
+  const turningLabel = get("#spread-result-labels").children[0];
+  assert.equal(turningLabel.children[0].textContent, "翻牌中…");
+  assert.ok(!JSON.stringify(turningLabel).includes("愚者") && !JSON.stringify(turningLabel).includes("THE FOOL"));
+  assert.equal(turningLabel.children[1].children[1].hidden, true);
+  state.readingFlips.clear();
 
   session.draws[0].faceUp = false;
   state.updateReadingResult();
@@ -122,6 +133,34 @@ test("each revealed name appears in overview; hidden cards never disclose identi
       }
     }
   }
+});
+
+test("scrollable mobile results still rotate through an edge-on frame before revealing names", () => {
+  const card = new THREE.Group();
+  card.rotation.y = Math.PI;
+  Object.assign(card.userData, { cardIndex: 0, frontSurface: { rotation: {} }, frontReflection: { rotation: {} }, reflectionMaterials: [] });
+  const entry = { index: 0, faceUp: true, reversed: true };
+  const result = { session: { draws: [entry], cut: null }, detail: null };
+  const flips = new Map([[0, { result, entry, from: Math.PI, to: 0, startedAt: 0, delay: 0, duration: 720 }]]);
+  let refreshes = 0;
+  const bounds = { left: 0, top: 0, width: 390, height: 700 };
+  const state = bind(["updateReadingCards"], {
+    THREE, getCardFlipPose, readingResult: result, readingFlips: flips, readingFlipPose: {},
+    readingLayoutDirty: false, readingScreenLayout: { scrollable: true, cards: [{ x: 100, y: 200, width: 61, height: 101 }], labelGap: 8, top: 100, bottom: 500 },
+    readingEntries: () => [entry], cardMeshes: [card], readingScrollOffset: 0,
+    readingLabelPoint: new THREE.Vector3(), readingProjectionPoint: new THREE.Vector3(), ritualPose: {},
+    screenToReadingPlane: (x, y, target) => target.set(x / 100, y / 100, 1.05),
+    deckCarouselReducedMotion: { matches: false }, selectedCard: 0,
+    updateReadingResult: () => refreshes++, measureReadingLayout() {},
+    stage: { getBoundingClientRect: () => bounds },
+    document: { querySelector: () => ({ getBoundingClientRect: () => bounds }), querySelectorAll: () => [] },
+  });
+  state.updateReadingCards(1 / 60, 0.36);
+  assert.equal(card.rotation.y, Math.PI / 2, "scroll's instant position update must not skip the flip");
+  assert.equal(flips.size, 1); assert.equal(refreshes, 0);
+  state.updateReadingCards(1 / 60, 0.72);
+  assert.equal(card.rotation.y, 0); assert.equal(flips.size, 0); assert.equal(refreshes, 1);
+  assert.equal(card.userData.frontSurface.rotation.z, Math.PI, "random reversal survives flipping");
 });
 
 test("result markup removes the bottom numeric/cut strip and binds background return", () => {

@@ -1,0 +1,17 @@
+/* The centre remains a real 3D back; this transparent button is its touch/keyboard target. */
+#draw-ring-confirm { position: absolute; z-index: 9; min-width: 44px; min-height: 44px; padding: 0; border: 1px solid #ead09a77; border-radius: 7px; background: transparent; box-shadow: 0 0 18px #d8b76f25; transform: translate(-50%, -50%); pointer-events: auto; cursor: pointer; touch-action: manipulation; }
+#draw-ring-confirm span { position: absolute; left: 50%; bottom: -25px; transform: translateX(-50%); padding: 3px 8px; border-radius: 20px; background: #0c1818e8; color: #ffe5ac; font-size: 12px; line-height: 17px; white-space: nowrap; }
+#draw-ring-confirm:focus-visible { outline: 2px solid #ffe5ac; outline-offset: 5px; }
+#draw-ring-confirm:hover { border-color: #ffe5ac; box-shadow: 0 0 26px #d8b76f55; }
+#draw-ritual:not([data-phase="selecting"]) #draw-ring-confirm { display: none; }
+#draw-ritual[data-phase="selecting"] #draw-selection-count { width: min(680px, calc(100% - 24px)); white-space: normal; text-align: center; line-height: 1.35; letter-spacing: 0.02em; }
+@media (max-width: 680px) {
+  #draw-ritual[data-phase="selecting"] .draw-ritual-heading h2 { font-size: 25px; }
+  #draw-ritual[data-phase="selecting"] .draw-ritual-heading p { font-size: 11px; line-height: 1.35; white-space: normal; overflow: visible; text-overflow: clip; }
+}
+@media (max-height: 500px) {
+  #draw-ritual[data-phase="selecting"] .draw-ritual-heading > span { display: none; }
+  #draw-ritual[data-phase="selecting"] .draw-ritual-heading h2 { font-size: 22px; }
+  #draw-ritual[data-phase="selecting"] .draw-ritual-heading p { font-size: 10px; line-height: 1.2; margin-block: 3px; }
+  #draw-ring-confirm span { font-size: 10px; bottom: -21px; }
+}

@@ -1,13 +1,15 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createDrawRitual } from "./draw-ritual.js?v=20260913-02";
-import { markDrawRevealed } from "./draw-session.js?v=20260913-01";
+import { createDrawRitual } from "./draw-ritual.js?v=20260913-05";
+import { markDrawRevealed, availableDrawPositions } from "./draw-session.js?v=20260913-01";
 import { createRitualEffects } from "./ritual-effects.js?v=20260913-02";
 import { getRitualCardPose } from "./ritual-layout.js?v=20260913-02";
 import { getDrawSpread, getReadingCardPose } from "./draw-spreads.js?v=20260913-01";
 import { createDeckTexturePlan, createDeckTextureCache, getTextureUrl } from "./texture-loading.js?v=20260913-02";
-import { fitReadingLayout, readingNameWidth } from "./reading-layout.js?v=20260913-03";
+import { fitReadingLayout, readingNameWidth, readingLayoutMetrics } from "./reading-layout.js?v=20260913-05";
 import { getCardDisplayName } from "./card-names.js?v=20260913-04";
+import { createRingSelection } from "./ring-selection.js?v=20260913-05";
+import { getCardFlipPose } from "./card-flip.js?v=20260913-05";
 
 
 const MAJOR_ARCANA = [
@@ -711,6 +713,13 @@ let readingScrollOffset = 0;
 let readingLayoutSession = null;
 let readingPan = null;
 const readingScroll = document.querySelector("#reading-scroll");
+const readingFlips = new Map();
+const readingFlipPose = {};
+let ringSelection = null;
+let ringRotation = 0;
+let ringFocusedPosition = -1;
+let ringViewport = null;
+const ringConfirm = document.querySelector("#draw-ring-confirm");
 let cameraTween = null;
 let invokeAge = 99;
 let shakeTrauma = 0;
@@ -1747,10 +1756,20 @@ function showReadingOverview() {
 
 function activateReadingCard(index) {
   if (!readingResult || drawRitual?.isOpen || isCardTransitionActive()) return;
+  if (readingFlips.has(index)) return;
   const entry = readingEntries().find((item) => item.index === index);
   if (!entry) return;
   focusReadingCard(index, entry.faceUp);
   if (!entry.faceUp) void flipSelectedCard();
+}
+
+function beginReadingCardFlip(entry, delay = 0) {
+  const card = cardMeshes[entry.index];
+  if (!card) return;
+  readingFlips.set(entry.index, { result: readingResult, entry,
+    from: card.rotation.y, to: entry.faceUp ? 0 : Math.PI,
+    startedAt: performance.now(), delay,
+    duration: deckCarouselReducedMotion.matches ? 0 : 720 });
 }
 
 function syncReadingArtifactVisibility() {
@@ -1778,10 +1797,11 @@ async function revealReading() {
     document.querySelector("#reading-result-status").textContent = "部分牌面載入失敗，請再次翻開；本輪結果不會改變。";
     return;
   }
-  entries.forEach((entry) => {
+  entries.filter((entry) => !entry.faceUp).forEach((entry, order) => {
     markDrawRevealed(result.session, entry.index);
     entry.faceUp = true;
     assignCardFaceTexture(entry.index, cardTexturePool.get(entry.index).texture);
+    beginReadingCardFlip(entry, deckCarouselReducedMotion.matches ? 0 : order * 55);
   });
   selectedFlipped = false;
   inspection.dataset.cardFace = "front";
@@ -1808,7 +1828,7 @@ function updateReadingResult() {
   readingLayoutDirty = true;
   readingPan = null;
   inspection.dataset.readingDetail = String(readingResult?.detail != null);
-  if (!readingResult) readingScroll.hidden = true;
+  if (!readingResult) { readingScroll.hidden = true; readingFlips.clear(); }
   inspection.dataset.readingActive = String(Boolean(readingResult && activeMode === "cards"));
   const strip = document.querySelector("#reading-result-strip");
   if (!strip) return;
@@ -1819,6 +1839,7 @@ function updateReadingResult() {
   if (!readingResult) return;
   const { session } = readingResult;
   const spread = getDrawSpread(session.spreadId);
+  inspection.dataset.readingSpread = spread.id;
   document.querySelector("#reading-method").textContent = `${session.method === "starlight" ? "迎接命運" : "手動選牌"} · ${spread.name}`;
   document.querySelector("#reading-result-status").textContent = `主牌已揭曉 ${session.draws.filter((entry) => entry.revealed).length} / ${session.drawCount} · 切牌${session.cut?.revealed ? "已揭曉" : "待翻開"}`;
   document.querySelector("#spread-result-title").textContent = spread.name;
@@ -1829,23 +1850,26 @@ function updateReadingResult() {
   readingEntries().forEach((entry, slot) => {
     const cut = entry === session.cut;
     const position = cut ? "切牌" : `${slot + 1} · ${spread.slots[slot].label}`;
+    const flipping = readingFlips.get(entry.index)?.result === readingResult;
+    const visibleFace = entry.faceUp && !flipping;
     const displayName = getCardDisplayName(CARDS[entry.index]);
-    const identity = entry.faceUp ? `${displayName} · ${entry.reversed ? "逆位" : "正位"}` : "尚未翻牌";
+    const concealedName = flipping ? "翻牌中…" : "尚未翻牌";
+    const identity = visibleFace ? `${displayName} · ${entry.reversed ? "逆位" : "正位"}` : concealedName;
     const label = document.createElement("button");
     label.type = "button";
     label.className = `spread-card-label${cut ? " is-cut" : ""}`;
     label.dataset.readingIndex = String(entry.index);
-    label.title = `${position} · ${identity}${entry.faceUp && displayName !== CARDS[entry.index].name ? ` · ${CARDS[entry.index].name}` : ""}`;
+    label.title = `${position} · ${identity}${visibleFace && displayName !== CARDS[entry.index].name ? ` · ${CARDS[entry.index].name}` : ""}`;
     label.setAttribute("aria-label", `${position}，${identity}，${entry.faceUp ? "放大檢視" : "翻開牌面"}`);
     label.setAttribute("aria-expanded", String(readingResult.detail === entry.index));
-    const title = document.createElement("strong"); title.textContent = entry.faceUp ? displayName : "尚未翻牌";
+    const title = document.createElement("strong"); title.textContent = visibleFace ? displayName : concealedName;
     const context = document.createElement("span"); context.className = "spread-card-context";
     const meaning = document.createElement("span"); meaning.className = "spread-card-position";
     meaning.textContent = cut ? "切牌" : spread.slots[slot].label;
     const orientation = document.createElement("span"); orientation.className = "spread-card-orientation";
-    orientation.hidden = !entry.faceUp;
-    orientation.textContent = entry.faceUp ? (entry.reversed ? "逆位" : "正位") : "";
-    if (entry.faceUp) orientation.dataset.orientation = entry.reversed ? "reversed" : "upright";
+    orientation.hidden = !visibleFace;
+    orientation.textContent = visibleFace ? (entry.reversed ? "逆位" : "正位") : "";
+    if (visibleFace) orientation.dataset.orientation = entry.reversed ? "reversed" : "upright";
     context.append(meaning, orientation);
     label.append(title, context);
     labels.append(label);
@@ -1944,6 +1968,9 @@ function initializeDrawRitual() {
     },
     phaseChanged(value) {
       const active = value !== "idle";
+      if (ringSelection) ringSelection.group.visible = value === "selecting";
+      ringConfirm.hidden = value !== "selecting";
+      if (value === "selecting") { ringRotation = 0; ringFocusedPosition = -1; }
       if (active) inspection.dataset.ritualPhase = value;
       else delete inspection.dataset.ritualPhase;
       inspection.querySelectorAll(".artifact-copy, .mode-tabs, #box-controls, #card-controls, #spread-result").forEach((element) => { element.inert = active; });
@@ -1991,6 +2018,10 @@ function initializeDrawRitual() {
     orderChanged(session) {
       const positions = new Map(session.order.map((index, position) => [index, position]));
       cardMeshes.forEach((card, index) => { card.userData.ritualPosition = positions.get(index) ?? -1; });
+    },
+    async prefetchSelection(indices, session) {
+      if (activeDeckKey !== session.deckKey || drawRitual.session !== session) return;
+      await Promise.allSettled(indices.map((index) => ensureCardTexture(index)));
     },
     async prepareSelection(indices, session) {
       if (!inspectionVisible || activeDeckKey !== session.deckKey || drawRitual.session !== session) throw new Error("Draw cancelled");
@@ -2057,6 +2088,7 @@ async function flipSelectedCard() {
     if (!selectedFlipped) markDrawRevealed(readingResult.session, selectedCard);
     entry.faceUp = !selectedFlipped;
     assignCardFaceTexture(selectedCard, cardTexturePool.get(selectedCard)?.texture);
+    beginReadingCardFlip(entry);
   }
   updateReadingResult();
   triggerMysticEffect(0.12);
@@ -3296,6 +3328,12 @@ function initializeCardMeshes(deckKey) {
   disposeCardMeshes();
   const deck = DECKS[deckKey];
   const backTexture = textures[`${deckKey}:${deck.cardBack}`];
+  if (!ringSelection) {
+    ringSelection = createRingSelection({ THREE, capacity: Math.max(80, CARDS.length) });
+    scene.add(ringSelection.group);
+  }
+  ringSelection.setTexture(backTexture);
+  ringSelection.group.visible = false;
   cardMeshes = CARDS.map((card, index) => {
     const group = createRoundedCard(backTexture, backTexture, index);
     group.position.set(0, 0, 0.35 + index * 0.01);
@@ -3881,6 +3919,11 @@ const VIEW_LABELS = {
 
 function pickRitualPosition(event) {
   setPointerFromEvent(event);
+  if (isRingSelecting()) {
+    const preview = cardMeshes[drawRitual.session.order[ringFocusedPosition]];
+    if (preview?.visible && raycaster.intersectObject(preview, true).length) return ringFocusedPosition;
+    return ringSelection.pick(raycaster) ?? -1;
+  }
   const hit = raycaster.intersectObjects(cardMeshes.filter((card) => card.visible), true)[0];
   if (!hit) return -1;
   let card = hit.object;
@@ -3891,6 +3934,17 @@ function pickRitualPosition(event) {
 function isRitualChoosing() {
   return drawRitual?.isOpen && ["cutting", "selecting"].includes(drawRitual.visual.phase);
 }
+
+function isRingSelecting() {
+  return Boolean(drawRitual?.isOpen && drawRitual.visual.phase === "selecting" && ringSelection);
+}
+
+function confirmRingCard() {
+  if (!isRingSelecting() || !availableDrawPositions(drawRitual.session).includes(ringFocusedPosition)) return;
+  drawRitual.choose(ringFocusedPosition);
+}
+
+ringConfirm.addEventListener("click", confirmRingCard);
 
 function isReadingScrollable() {
   return Boolean(readingResult && activeMode === "cards" && !drawRitual?.isOpen && !isCardTransitionActive() && readingScreenLayout?.scrollable);
@@ -3933,17 +3987,20 @@ bindReadingScrollGestures(document.querySelector("#spread-result-labels"));
 
 renderer.domElement.addEventListener("pointerdown", (event) => {
   if (!isRitualChoosing() || event.button !== 0) return;
-  ritualPointer = { id: event.pointerId, x: event.clientX, focus: drawRitual.visual.focus, moved: false };
+  ritualPointer = { id: event.pointerId, x: event.clientX, y: event.clientY, rotation: ringRotation, focus: drawRitual.visual.focus, moved: false };
   renderer.domElement.setPointerCapture(event.pointerId);
 });
 renderer.domElement.addEventListener("pointermove", (event) => {
   if (!isRitualChoosing()) return;
   if (ritualPointer?.id === event.pointerId) {
     const delta = event.clientX - ritualPointer.x;
-    if (Math.abs(delta) > 7) ritualPointer.moved = true;
+    if (Math.hypot(delta, event.clientY - ritualPointer.y) > 7) ritualPointer.moved = true;
     if (ritualPointer.moved) {
-      const step = stage.clientWidth / (camera.aspect < 0.85 ? 5 : 10);
-      drawRitual.focusChoice(ritualPointer.focus - delta / step, false);
+      if (isRingSelecting()) ringRotation = ritualPointer.rotation + delta / stage.clientWidth * Math.PI * 2;
+      else {
+        const step = stage.clientWidth / (camera.aspect < 0.85 ? 5 : 10);
+        drawRitual.focusChoice(ritualPointer.focus - delta / step, false);
+      }
       ritualMotion.hover = -1;
       renderer.domElement.style.cursor = "grabbing";
       event.preventDefault();
@@ -3960,13 +4017,20 @@ renderer.domElement.addEventListener("pointerleave", () => { ritualMotion.hover 
 renderer.domElement.addEventListener("click", (event) => {
   if (!isRitualChoosing()) return;
   const position = pickRitualPosition(event);
-  if (position >= 0) drawRitual.choose(position);
+  if (position < 0) return;
+  if (isRingSelecting()) {
+    if (position === ringFocusedPosition) confirmRingCard();
+    else drawRitual.focusChoice(position, false);
+  } else drawRitual.choose(position);
 });
 renderer.domElement.addEventListener("wheel", (event) => {
   if (!isRitualChoosing()) return;
   event.preventDefault();
   const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-  if (delta) drawRitual.focusChoice(drawRitual.visual.focus + Math.sign(delta), false);
+  if (delta) {
+    if (isRingSelecting()) ringRotation += Math.sign(delta) * 0.12;
+    else drawRitual.focusChoice(drawRitual.visual.focus + Math.sign(delta), false);
+  }
 }, { passive: false });
 renderer.domElement.addEventListener("keydown", (event) => {
   if (!isRitualChoosing()) return;
@@ -4106,6 +4170,7 @@ function updateCards(dt, time) {
 function updateRitualCards(dt, time) {
   const state = drawRitual.visual;
   const session = drawRitual.session;
+  if (state.phase === "selecting" && ringSelection) { updateRingSelecting(dt, time); return; }
   const spread = getDrawSpread(session.spreadId);
   ritualMotion.energy = THREE.MathUtils.damp(ritualMotion.energy, state.holding ? 1 : 0.05, 3.5, dt);
   ritualMotion.clock += dt * (0.12 + ritualMotion.energy * 1.55);
@@ -4144,9 +4209,62 @@ function updateRitualCards(dt, time) {
   }
 }
 
+function updateRingSelecting(dt, time) {
+  const session = drawRitual.session;
+  const available = availableDrawPositions(session);
+  const bounds = stage.getBoundingClientRect();
+  const header = document.querySelector(".draw-ritual-header").getBoundingClientRect();
+  const count = document.querySelector("#draw-selection-count").getBoundingClientRect();
+  const short = bounds.height < 500;
+  const top = Math.max(short ? 65 : 100, header.bottom - bounds.top + 8);
+  const bottom = Math.max(top + 50, Math.min(bounds.height - (short ? 112 : 165), count.top - bounds.top - (short ? 30 : 65)));
+  ringFocusedPosition = available.includes(drawRitual.visual.focus) ? drawRitual.visual.focus : available[0] ?? -1;
+  ringViewport = ringSelection.update({ positions: available, count: session.order.length,
+    rotation: ringRotation, focusPosition: ringFocusedPosition,
+    width: bounds.width, height: bounds.height, top, bottom, project: screenToReadingPlane });
+  ringSelection.group.visible = true;
+  const preview = ringViewport.preview;
+  const hudBounds = document.querySelector("#draw-ritual").getBoundingClientRect();
+  ringConfirm.hidden = ringFocusedPosition < 0;
+  ringConfirm.style.left = `${bounds.left - hudBounds.left + preview.x}px`;
+  ringConfirm.style.top = `${bounds.top - hudBounds.top + preview.y}px`;
+  ringConfirm.style.width = `${Math.max(44, preview.width)}px`;
+  ringConfirm.style.height = `${Math.max(44, preview.height)}px`;
+  ringConfirm.setAttribute("aria-label", `抽取中央放大的第 ${ringFocusedPosition + 1} 號牌背`);
+  for (const card of cardMeshes) {
+    const index = card.userData.cardIndex;
+    const cut = session.cut?.index === index;
+    const slot = session.draws.findIndex((entry) => entry.index === index);
+    const focus = session.order[ringFocusedPosition] === index;
+    card.visible = cut || slot >= 0 || focus;
+    if (!card.visible) continue;
+    const height = cut ? (short ? 44 : 64) : slot >= 0 ? (short ? 26 : 36) : preview.height;
+    const rect = focus ? preview : { x: cut ? 40 : bounds.width * 0.30 + slot * bounds.width * 0.62 / Math.max(1, session.drawCount - 1),
+      y: bounds.height - (short ? 88 : 125), height, width: height * 0.61 / 1.01 };
+    screenToReadingPlane(rect.x, rect.y, readingLabelPoint);
+    screenToReadingPlane(rect.x, rect.y - rect.height / 2, readingProjectionPoint);
+    const scale = Math.abs(readingProjectionPoint.y - readingLabelPoint.y) / 0.505;
+    const speed = deckCarouselReducedMotion.matches ? 1000 : 12;
+    card.position.x = THREE.MathUtils.damp(card.position.x, readingLabelPoint.x, speed, dt);
+    card.position.y = THREE.MathUtils.damp(card.position.y, readingLabelPoint.y, speed, dt);
+    card.position.z = THREE.MathUtils.damp(card.position.z, 1.05, speed, dt);
+    card.rotation.x = THREE.MathUtils.damp(card.rotation.x, 0, speed, dt);
+    card.rotation.y = Math.PI;
+    card.rotation.z = THREE.MathUtils.damp(card.rotation.z, 0, speed, dt);
+    card.scale.setScalar(THREE.MathUtils.damp(card.scale.x, scale, speed, dt));
+    card.userData.reflectionMaterials.forEach((material) => {
+      material.uniforms.uSweep.value = deckCarouselReducedMotion.matches ? 0.5 : (time * 0.18) % 1.38 - 0.16;
+      material.uniforms.uOpacity.value = focus ? 0.85 : 0.3;
+    });
+  }
+}
+
 function measureReadingLayout() {
   const spread = getDrawSpread(readingResult.session.spreadId);
   const bounds = stage.getBoundingClientRect();
+  const metrics = readingLayoutMetrics(bounds.width, spread, { detail: readingResult.detail !== null });
+  inspection.dataset.readingSpread = spread.id;
+  inspection.dataset.readingCompact = String(metrics.compact);
   const header = document.querySelector("#spread-result > header").getBoundingClientRect();
   const footer = cardControls.getBoundingClientRect();
   let mainLabelHeight = 0, cutLabelHeight = 0, detailLabelHeight = 0;
@@ -4165,9 +4283,10 @@ function measureReadingLayout() {
     else mainLabelHeight = Math.max(mainLabelHeight, nameHeight);
   }
   readingScreenLayout = fitReadingLayout({ width: bounds.width, height: bounds.height,
-    top: Math.max(16, header.bottom - bounds.top + 16), footerTop: footer.top - bounds.top,
+    top: Math.max(16, header.bottom - bounds.top + metrics.headerGap), footerTop: footer.top - bounds.top,
     bottomPadding: Math.max(16, bounds.bottom - footer.bottom),
     spread, mainLabelHeight, cutLabelHeight, detailLabelHeight, detail: readingResult.detail !== null });
+  document.querySelector("#spread-result").style.setProperty("--reading-label-gap", `${readingScreenLayout.labelGap}px`);
   if (readingLayoutSession !== readingResult.session) {
     readingScrollOffset = 0;
     readingLayoutSession = readingResult.session;
@@ -4198,6 +4317,7 @@ function updateReadingCards(dt, time) {
   const { session, detail } = readingResult;
   if (readingLayoutDirty || !readingScreenLayout) measureReadingLayout();
   const entries = readingEntries();
+  let finishedFlip = false;
   for (const card of cardMeshes) {
     const entry = entries.find((item) => item.index === card.userData.cardIndex);
     const cut = entry && entry === session.cut;
@@ -4215,7 +4335,12 @@ function updateReadingCards(dt, time) {
     card.position.y = THREE.MathUtils.damp(card.position.y, ritualPose.y, speed, dt);
     card.position.z = THREE.MathUtils.damp(card.position.z, ritualPose.z, speed, dt);
     card.rotation.x = THREE.MathUtils.damp(card.rotation.x, 0, speed, dt);
-    card.rotation.y = THREE.MathUtils.damp(card.rotation.y, ritualPose.ry, speed, dt);
+    const flip = readingFlips.get(entry.index);
+    if (flip?.result === readingResult) {
+      getCardFlipPose({ ...flip, elapsed: time * 1000 - flip.startedAt }, readingFlipPose);
+      card.rotation.y = readingFlipPose.rotationY;
+      if (readingFlipPose.done) { readingFlips.delete(entry.index); finishedFlip = true; }
+    } else card.rotation.y = THREE.MathUtils.damp(card.rotation.y, ritualPose.ry, deckCarouselReducedMotion.matches ? 1000 : 7.5, dt);
     card.rotation.z = THREE.MathUtils.damp(card.rotation.z, 0, speed, dt);
     card.scale.setScalar(THREE.MathUtils.damp(card.scale.x, ritualPose.scale, speed, dt));
     // The back stays direction-neutral; only the original front surface is reversed.
@@ -4226,6 +4351,7 @@ function updateReadingCards(dt, time) {
       material.uniforms.uOpacity.value = card.userData.cardIndex === selectedCard ? 0.8 : 0.4;
     });
   }
+  if (finishedFlip) { updateReadingResult(); measureReadingLayout(); }
   const stageBounds = stage.getBoundingClientRect();
   const labelBounds = document.querySelector("#spread-result").getBoundingClientRect();
   for (const label of document.querySelectorAll(".spread-card-label")) {
@@ -4235,7 +4361,7 @@ function updateReadingCards(dt, time) {
     card.getWorldPosition(readingLabelPoint);
     readingLabelPoint.y += card.scale.y * 0.505;
     readingLabelPoint.project(camera);
-    const labelBottom = (1 - readingLabelPoint.y) * 0.5 * stageBounds.height - 6;
+    const labelBottom = (1 - readingLabelPoint.y) * 0.5 * stageBounds.height - readingScreenLayout.labelGap;
     if (readingScreenLayout.scrollable && !label.classList.contains("is-cut")) {
       label.hidden = labelBottom - Number(label.dataset.nameHeight) < readingScreenLayout.top - 0.5 || labelBottom > readingScreenLayout.bottom;
     }
