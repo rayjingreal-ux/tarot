@@ -1,4 +1,4 @@
-const READY = "完整牌陣已備妥，包含牌位、牌名、正逆位與切牌，不含操作按鈕。尚未翻牌的卡片保留牌背。";
+const READY = "完整牌陣已備妥，包含牌位、牌名、正逆位與切牌；有填寫的問題也會存入圖片，不含操作按鈕。尚未翻牌的卡片保留牌背。";
 const FALLBACK = "此瀏覽器暫不支援直接分享圖片；可下載 PNG，或長按下圖儲存到照片，再從照片分享。iPhone 也可改用 Safari 開啟本站。";
 
 // Prepare the actual PNG File before the next tap. In particular, no encoding,

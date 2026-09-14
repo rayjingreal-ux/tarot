@@ -1,0 +1,46 @@
+/* A small glass writing frame on the existing stage, not another modal. */
+#draw-spread-setup .draw-intention-frame {
+  position: relative; isolation: isolate; width: min(620px, 100%); box-sizing: border-box;
+  margin: 0 auto 22px; padding: 23px 24px 16px; border: 1px solid #d6b7737a;
+  border-radius: 12px 3px 12px 3px; color: #f1dfb9;
+  background: linear-gradient(125deg, #152b24b8, #07120dd1 52%, #322a14a3);
+  box-shadow: inset 0 0 28px #cfa9610b, 0 10px 28px #0005;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+.draw-intention-frame::before, .draw-intention-frame::after {
+  content: "✧"; position: absolute; bottom: -10px; color: #d6bb7d; font-size: 17px;
+  line-height: 20px; text-shadow: 0 0 12px #e5bd7777; pointer-events: none;
+}
+.draw-intention-frame::before { left: 10px; }
+.draw-intention-frame::after { right: 10px; }
+.draw-intention-sigil { position: absolute; top: -17px; left: 50%; width: 160px; height: 34px; transform: translateX(-50%); pointer-events: none; }
+.draw-intention-sigil svg { width: 100%; height: 100%; filter: drop-shadow(0 0 5px #e9be7380); }
+.draw-intention-frame label { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 5px 12px; margin-bottom: 10px; }
+.draw-intention-frame label span { font: 400 18px/1.5 var(--serif); letter-spacing: .06em; }
+.draw-intention-frame label small { font: 12px/1.5 var(--sans); color: #c9c3b1; }
+#draw-spread-setup #draw-question {
+  display: block; box-sizing: border-box; width: 100%; min-height: 76px; height: 88px; max-height: 180px;
+  padding: 10px 12px; resize: vertical; border: 1px solid #d5b77336; border-radius: 5px;
+  background: #020a0666; color: #fff0d3; font: 16px/1.6 var(--sans); letter-spacing: normal;
+  box-shadow: inset 0 2px 14px #0003; -webkit-text-fill-color: currentColor;
+}
+#draw-spread-setup #draw-question::placeholder { color: #cec7b6a6; }
+#draw-spread-setup #draw-question:focus { outline: 2px solid #e1bf78; outline-offset: 3px; border-color: #e1bf78; background: #07150dbc; }
+.draw-intention-frame:focus-within { border-color: #ebcf91; box-shadow: 0 0 26px #d1b06a25, inset 0 0 22px #d1b06a0e; }
+.draw-intention-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.draw-intention-meta p { margin: 0; color: #c6c3b1; font: 12px/1.5 var(--sans); }
+#draw-spread-setup #draw-question-count { flex: 0 0 auto; color: #c9b88e; font: 12px/1.5 var(--sans); font-variant-numeric: tabular-nums; }
+@media (max-width: 680px) {
+  #draw-spread-setup .draw-intention-frame { padding: 19px 13px 12px; margin-bottom: 15px; }
+  .draw-intention-frame label { gap: 2px 8px; margin-bottom: 7px; }
+  .draw-intention-frame label span { font-size: 16px; }
+  .draw-intention-frame label small { font-size: 11px; }
+  #draw-spread-setup #draw-question { height: 76px; resize: none; }
+  .draw-intention-meta { gap: 8px; }
+  .draw-intention-meta p { font-size: 11px; }
+}
+@media (max-height: 560px) {
+  #draw-spread-setup .draw-intention-frame { padding: 16px 12px 8px; margin-bottom: 12px; }
+  #draw-spread-setup #draw-question { min-height: 58px; height: 58px; }
+  .draw-intention-frame label small { font-size: 11px; }
+}

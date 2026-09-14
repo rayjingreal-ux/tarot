@@ -27,7 +27,7 @@ export function fitReadingLayout({ width, height, top = 120, footerTop = height 
   spread, mainLabelHeight = 34, cutLabelHeight = 34, detailLabelHeight = 34,
   mainTopLabelHeight = mainLabelHeight, mainBottomLabelHeight = 0,
   cutTopLabelHeight = cutLabelHeight, cutBottomLabelHeight = 0,
-  detailTopLabelHeight = detailLabelHeight, detailBottomLabelHeight = 0, detail = false }) {
+  detailTopLabelHeight = detailLabelHeight, detailBottomLabelHeight = 0, questionHeight = 0, detail = false }) {
   const xs = spread.slots.map((slot) => slot.x), ys = spread.slots.map((slot) => slot.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
   const spanY = maxY - minY;
@@ -39,14 +39,21 @@ export function fitReadingLayout({ width, height, top = 120, footerTop = height 
   const cut = { x: 16 + readingNameWidth(width, spread, { cut: true }) / 2, y: height - bottomPadding - cutBottomSpace - cutHeight / 2,
     width: cutHeight * CARD_RATIO, height: cutHeight };
   const cutTop = cut.y - cut.height / 2 - cutTopLabelHeight - (cutTopLabelHeight ? labelGap : 0);
-  const bottom = Math.min(footerTop - footerGap, detail ? height - bottomPadding : cutTop - footerGap);
+  const footerBoundary = Math.min(footerTop - footerGap, detail ? height - bottomPadding : cutTop - footerGap);
+  // An optional question is a separate, fully wrapped reading note, never an
+  // overlay on the main cards, pinned cut or action buttons. Blank notes reserve
+  // no space, keeping the original no-question layout byte-for-byte equivalent.
+  const question = questionHeight > 0
+    ? { top: footerBoundary - questionHeight, bottom: footerBoundary, height: questionHeight }
+    : null;
+  const bottom = question ? question.top - footerGap : footerBoundary;
   const availableHeight = Math.max(1, bottom - top);
   if (detail) {
     const detailTopSpace = detailTopLabelHeight + (detailTopLabelHeight ? labelGap : 0);
     const detailBottomSpace = detailBottomLabelHeight + (detailBottomLabelHeight ? labelGap : 0);
     const cardHeight = Math.max(1, Math.min(availableHeight - detailTopSpace - detailBottomSpace, (width - 32) / CARD_RATIO));
     return { compact, gap, labelGap, detail: { x: width / 2, y: top + (availableHeight + detailTopSpace - detailBottomSpace) / 2,
-      width: cardHeight * CARD_RATIO, height: cardHeight }, cut, cards: [] };
+      width: cardHeight * CARD_RATIO, height: cardHeight }, cut, question, cards: [] };
   }
   const columnWidth = readingNameWidth(width, spread);
   const fittedHeight = (availableHeight - spanY * gap) / (spanY + 1) - topSpace - bottomSpace;
@@ -58,7 +65,7 @@ export function fitReadingLayout({ width, height, top = 120, footerTop = height 
   const groupHeight = spanY * rowStep + cardHeight + topSpace + bottomSpace;
   const scrollable = groupHeight > availableHeight + 0.5;
   const firstCenterY = top + (scrollable ? 0 : (availableHeight - groupHeight) / 2) + topSpace + cardHeight / 2;
-  return { compact, gap, labelGap, cut, scrollable, top, bottom, contentHeight: groupHeight, viewportHeight: availableHeight,
+  return { compact, gap, labelGap, cut, question, scrollable, top, bottom, contentHeight: groupHeight, viewportHeight: availableHeight,
     cards: spread.slots.map((slot) => ({
     x: width / 2 + (slot.x - (minX + maxX) / 2) * columnStep,
     y: firstCenterY + (slot.y - minY) * rowStep, width: cardWidth, height: cardHeight,

@@ -213,6 +213,55 @@ test("split-label CSS anchors the identity below and gives four mobile actions t
   assert.match(css, /\.deck-flow-actions\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
 });
 
+test("optional question reserves its own lane above cut and controls without changing a blank reading", () => {
+  for (const spread of DRAW_SPREADS) for (const [width, height, questionHeight] of [[320, 568, 108], [390, 844, 120], [1707, 932, 84]]) {
+    const input = { width, height, spread, top: 118, footerTop: height - 112,
+      mainTopLabelHeight: 25, mainBottomLabelHeight: 40, cutTopLabelHeight: 18, cutBottomLabelHeight: 40 };
+    const empty = fitReadingLayout(input);
+    assert.deepEqual(fitReadingLayout({ ...input, questionHeight: 0 }), empty, "blank notes reserve no space");
+    assert.equal(empty.question, null);
+    const layout = fitReadingLayout({ ...input, questionHeight });
+    assert.equal(layout.cards.length, spread.count);
+    assert.deepEqual(layout.cut, empty.cut, "the cut remains pinned at the same lower-left position");
+    assert.equal(layout.question.height, questionHeight);
+    assert.ok(layout.bottom < layout.question.top);
+    assert.ok(layout.question.bottom < input.footerTop);
+    assert.ok(layout.question.bottom < nameBox(layout.cut, readingNameWidth(width, spread, { cut: true }), 18, layout.labelGap).top);
+    for (const card of layout.cards) {
+      const meaning = nameBox(card, readingNameWidth(width, spread), 25, layout.labelGap);
+      const identity = bottomNameBox(card, readingNameWidth(width, spread), 40, layout.labelGap);
+      const offset = Math.max(0, Math.min(meaning.top - layout.top, layout.contentHeight - layout.viewportHeight));
+      assert.ok(meaning.top - offset >= layout.top - 0.01);
+      assert.ok(identity.bottom - offset <= layout.bottom + 0.01, `${spread.id}/${width}: complete card and both captions remain reachable above the question`);
+    }
+  }
+});
+
+test("detail view keeps the entire question and its two labels clear of the enlarged card", () => {
+  for (const [width, height] of [[320, 568], [390, 844], [1707, 932]]) {
+    const spread = DRAW_SPREADS.find((item) => item.id === "houses");
+    const layout = fitReadingLayout({ width, height, top: 118, footerTop: height - 112, spread,
+      detail: true, questionHeight: 105, detailTopLabelHeight: 38, detailBottomLabelHeight: 60 });
+    const meaning = nameBox(layout.detail, readingNameWidth(width, spread, { detail: true }), 38, layout.labelGap);
+    const identity = bottomNameBox(layout.detail, readingNameWidth(width, spread, { detail: true }), 60, layout.labelGap);
+    assert.ok(meaning.top >= 118 - 0.01);
+    assert.ok(identity.bottom < layout.question.top);
+    assert.ok(layout.question.bottom < height - 112);
+    assert.ok(layout.detail.height > 70);
+  }
+});
+
+test("question CSS preserves plain multiline text and scroll access without an ellipsis or hidden result rule", () => {
+  const css = readFileSync(new URL("../draw-ritual.css", import.meta.url), "utf8");
+  const panelRules = [...css.matchAll(/#reading-question(?:-text)?[^,{]*\{([^}]*)\}/g)].map((match) => match[1]).join("\n");
+  assert.doesNotMatch(panelRules, /text-overflow|line-clamp|white-space:\s*nowrap|display:\s*none/);
+  assert.match(panelRules, /white-space:\s*pre-wrap/);
+  assert.match(panelRules, /overflow-wrap:\s*anywhere/);
+  assert.match(panelRules, /overflow:\s*auto/);
+  assert.match(panelRules, /pointer-events:\s*auto/);
+  assert.match(panelRules, /touch-action:\s*pan-y/);
+});
+
 test("actual stage unprojection fits all four 3D corners into each target card rectangle", () => {
   const source = readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const body = source.match(/^function screenToReadingPlane\([^]*?^}/m)?.[0];

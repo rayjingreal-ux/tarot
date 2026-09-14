@@ -7,9 +7,10 @@
     <meta name="description" content="離線塔羅藏書室：走近書櫃、選取牌盒、六面檢視、開盒與漂浮翻牌。" />
     <title>Arcana Cabinet｜塔羅藏書室</title>
     <link rel="stylesheet" href="./styles.css?v=20260913-06-frame2" />
-    <link rel="stylesheet" href="./draw-ritual.css?v=20260913-06" />
+    <link rel="stylesheet" href="./draw-ritual.css?v=20260914-01" />
+    <link rel="stylesheet" href="./draw-question.css?v=20260914-01" />
     <link rel="stylesheet" href="./ring-selection.css?v=20260913-05" />
-    <link rel="stylesheet" href="./reading-export.css?v=20260913-07-share2" />
+    <link rel="stylesheet" href="./reading-export.css?v=20260914-01" />
     <script type="importmap">
       {
         "imports": {
@@ -167,6 +168,7 @@
         <section id="spread-result" aria-label="本輪牌陣" hidden>
           <header><p id="spread-result-summary"></p><h2 id="spread-result-title"></h2></header>
           <div id="spread-result-labels" role="group" aria-label="牌名：點選翻開或放大，放大時按 Escape 或點空白處返回總覽"></div>
+          <aside id="reading-question" aria-label="當時的問題" hidden><strong>當時的問題</strong><p id="reading-question-text" tabindex="0"></p></aside>
           <p id="reading-scroll-hint" hidden>↕ 上下滑動，查看更多牌卡</p>
           <div id="reading-scroll" tabindex="0" role="region" aria-label="上下捲動查看完整牌陣，也可以在牌面區上下拖曳" title="上下滑動，查看更多牌卡" hidden><div id="reading-scroll-content" aria-hidden="true"></div></div>
         </section>
@@ -187,6 +189,14 @@
 
             <div class="draw-ritual-body">
               <section id="draw-spread-setup" class="draw-panel draw-setup draw-spread-picker" data-draw-panel="setup" aria-labelledby="draw-spread-title">
+                <div class="draw-intention-frame">
+                  <div class="draw-intention-sigil" aria-hidden="true">
+                    <svg viewBox="0 0 160 36" fill="none" stroke="currentColor" stroke-width=".8"><path d="M2 18h35m86 0h35M47 10l8 8-8 8-8-8zm66 0 8 8-8 8-8-8zM80 2l4 11 12 5-12 5-4 11-4-11-12-5 12-5z"/><circle cx="80" cy="18" r="13"/><path d="M63 7a12 12 0 0 0 0 22 14 14 0 0 1 0-22m34 0a12 12 0 0 1 0 22 14 14 0 0 0 0-22"/></svg>
+                  </div>
+                  <label for="draw-question"><span>留給這次占卜的問題</span><small>選填 · 也可以只在心裡默念</small></label>
+                  <textarea id="draw-question" rows="3" maxlength="200" placeholder="此刻，你想問什麼？也可以留白，直接開始。" aria-describedby="draw-question-help draw-question-count" enterkeyhint="enter"></textarea>
+                  <div class="draw-intention-meta"><p id="draw-question-help">填寫後會留在牌陣下方，並一併存入分享圖片。</p><span id="draw-question-count">0 / 200</span></div>
+                </div>
                 <header class="draw-spread-header">
                   <div><h3 id="draw-spread-title">選一個牌陣</h3><p id="draw-spread-description" role="status"></p></div>
                   <span>左右滑動，探索牌陣</span>
@@ -290,7 +300,7 @@
         <header><h2 id="reading-export-title">儲存完整牌陣</h2><button id="reading-export-close" type="button" aria-label="關閉圖片預覽">×</button></header>
         <p id="reading-export-status" role="status"></p>
         <p id="reading-export-help">iPhone 請使用下方「分享圖片」；Safari 工具列的分享仍會分享網頁網址。</p>
-        <img id="reading-export-image" alt="完整牌陣：包含所有主牌、宮位文字、牌名正逆位與左下角切牌" hidden />
+        <img id="reading-export-image" alt="完整牌陣：包含所有主牌、宮位文字、牌名正逆位、左下角切牌與選填問題" hidden />
         <footer><button id="reading-export-share" type="button" aria-describedby="reading-export-help" hidden disabled>分享圖片</button><a id="reading-export-download" download hidden>下載 PNG 圖片</a><a id="reading-export-open" target="_blank" rel="noopener" hidden>開啟圖片另存</a></footer>
       </dialog>
     </main>
@@ -300,6 +310,6 @@
         document.querySelector("#file-warning").hidden = false;
       }
     </script>
-    <script type="module" src="./app.js?v=20260913-07"></script>
+    <script type="module" src="./app.js?v=20260914-01"></script>
   </body>
 </html>

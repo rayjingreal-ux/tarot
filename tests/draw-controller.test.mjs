@@ -6,7 +6,8 @@ import { SHUFFLE_TIMING } from "../ritual-layout.js";
 
 // Minimal event/element doubles exercise the real controller, without a browser or
 // production dependencies. These are state-machine tests, not visual-layout QA.
-function harness(t, { method = "manual", prepareSelection = async () => {}, prefetchSelection = async () => {} } = {}) {
+function harness(t, { method = "manual", prepareSelection = async () => {}, prefetchSelection = async () => {},
+  loadDeck = async () => Array.from({ length: 78 }, (_, index) => ({ id: `card-${index}` })) } = {}) {
   const elements = new Map(), frames = new Map(); let now = 0, nextFrame = 0;
   const classes = () => {
     const values = new Set();
@@ -56,7 +57,7 @@ function harness(t, { method = "manual", prepareSelection = async () => {}, pref
   const commits = [], preparations = [], prefetches = [], orders = []; let cancelled = 0;
   const controller = createDrawRitual({
     getContext: () => ({ deckKey: "test", name: "Test deck", backUrl: "back.webp" }), onOpen() {},
-    loadDeck: async () => Array.from({ length: 78 }, (_, index) => ({ id: `card-${index}` })),
+    loadDeck,
     startAnimation() {}, cancelAnimation() { cancelled++; }, focusResult() {}, focusChoices() {},
     orderChanged(session) { orders.push(session.order.slice()); },
     prefetchSelection: async (indices, session) => { prefetches.push({ indices, session }); await prefetchSelection(indices, session); },
@@ -69,8 +70,10 @@ function harness(t, { method = "manual", prepareSelection = async () => {}, pref
     const end = now + milliseconds;
     while (now < end) stall(Math.min(16, end - now));
   }
-  async function begin(spread = "free-3") {
+  async function begin(spread = "free-3", questionText = "") {
     controller.open();
+    get("draw-question").value = questionText;
+    get("draw-question").fire("input");
     get("draw-spread-options").children.find((button) => button.dataset.spread === spread).fire("click");
     get(method === "manual" ? "draw-start" : "draw-fate").fire("click"); await settle();
     controller.animationComplete();
@@ -253,4 +256,88 @@ test("held shuffle exposes the central-light interval and delayed frames cannot 
   h.advance(SHUFFLE_TIMING.durationMs);
   assert.equal(h.controller.visual.progress, 1);
   assert.equal(h.controller.session.phase, "shuffling", "bright hold never implicitly cuts the deck");
+});
+
+test("optional question survives repeat shuffling, cutting and delivery for both draw methods", async (t) => {
+  for (const method of ["manual", "starlight"]) await t.test(method, async (t) => {
+    const h = harness(t, { method });
+    const question = "未來三個月，適合如何前進？\n我想記住當下的感受。✨";
+    await h.begin("free-3", `  ${question}\r\n  `);
+    assert.equal(h.controller.session.question, question);
+    assert.equal(h.get("draw-question").disabled, true);
+    if (method === "manual") h.get("draw-hold").fire("click");
+    h.advance(SHUFFLE_TIMING.durationMs + 100);
+    h.get("draw-question").value = "hidden input must not change the reading";
+    h.get("draw-hold").fire("click");
+    assert.equal(h.controller.session.question, question);
+    h.advance(SHUFFLE_TIMING.durationMs + 100);
+    h.get("draw-collect").fire("click");
+    h.controller.choose(7);
+    if (method === "manual") { h.advance(500); h.controller.choose(); }
+    await h.settle();
+    assert.equal(h.commits.length, 1);
+    assert.equal(h.commits[0].session.question, question);
+    assert.equal(h.commits[0].session.draws.length, 3);
+    h.controller.open();
+    assert.equal(h.get("draw-question").value, "", "new readings do not inherit an old question");
+    assert.equal(h.get("draw-question-count").textContent, "0 / 200");
+    assert.equal(h.get("draw-question").disabled, false);
+  });
+});
+
+test("whitespace is optional, markup remains text and the question limit never splits a surrogate", async (t) => {
+  const h = harness(t);
+  for (const [input, expected] of [[" \n\r\n\t", ""], ["<script>alert(1)</script>", "<script>alert(1)</script>"],
+    ["問".repeat(205), "問".repeat(200)], ["問".repeat(199) + "✨", "問".repeat(199) + "✨"],
+    ["問".repeat(199) + "🌙", "問".repeat(199)]]) {
+    await h.begin("single", input);
+    assert.equal(h.controller.session.question, expected);
+    h.controller.cancel();
+  }
+});
+
+test("question is captured before slow loading and retained when deck preparation is retried", async (t) => {
+  let release, attempts = 0;
+  const h = harness(t, { loadDeck: () => {
+    attempts++;
+    if (attempts === 1) return Promise.reject(new Error("offline"));
+    return new Promise((resolve) => { release = resolve; });
+  } });
+  await h.begin("single", "當下的問題");
+  assert.equal(h.get("draw-question").disabled, false);
+  assert.equal(h.get("draw-question").value, "當下的問題");
+  h.get("draw-retry").fire("click");
+  assert.equal(h.get("draw-question").disabled, true);
+  h.get("draw-question").value = "later edit";
+  release(Array.from({length:78}, (_, i) => ({id:`card-${i}`})));
+  await h.settle();
+  assert.equal(h.controller.session.question, "當下的問題");
+});
+
+test("delivery retry preserves the question and a cancelled preparation cannot leak it to a new round", async (t) => {
+  let attempts = 0;
+  const h = harness(t, { prepareSelection: async () => { if (++attempts === 1) throw new Error("retry"); } });
+  await h.begin("single", "留存這次的問題");
+  h.get("draw-hold").fire("click"); h.advance(SHUFFLE_TIMING.durationMs + 100);
+  h.get("draw-collect").fire("click"); h.controller.choose(0); h.advance(500); h.controller.choose();
+  await h.settle();
+  const session = h.controller.session;
+  h.get("draw-retry").fire("click"); await h.settle();
+  assert.equal(h.commits[0].session, session);
+  assert.equal(h.commits[0].session.question, "留存這次的問題");
+  h.controller.open(); h.get("draw-question").value = "cancelled draft";
+  h.controller.cancel(); h.controller.open();
+  assert.equal(h.get("draw-question").value, "");
+});
+
+test("typing line breaks or cancelling IME composition never starts or cancels a reading", (t) => {
+  const h = harness(t); h.controller.open();
+  h.get("draw-question").value = "目前的問題\n第二行";
+  h.get("draw-question").fire("input");
+  assert.equal(h.get("draw-question-count").textContent, `${h.get("draw-question").value.length} / 200`);
+  h.get("draw-ritual").fire("keydown", {key:"Enter", target:h.get("draw-question")});
+  h.get("draw-ritual").fire("keydown", {key:"Escape", isComposing:true, target:h.get("draw-question")});
+  assert.equal(h.controller.isOpen, true);
+  assert.equal(h.controller.session, null);
+  assert.equal(h.cancelled, 0);
 });

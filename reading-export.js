@@ -7,7 +7,9 @@ export function createReadingExportModel({ session, cards, deckName, displayName
     reversed: Boolean(entry.faceUp && entry.reversed),
     name: entry.faceUp ? displayName(cards[entry.index]) : "尚未翻牌",
     orientation: entry.faceUp ? (entry.reversed ? "逆位" : "正位") : "" });
-  return { deckName, spreadId: session.spreadId, draws: session.draws.map(entryModel),
+  return { deckName, spreadId: session.spreadId,
+    question: typeof session.question === "string" ? session.question.trim() : "",
+    draws: session.draws.map(entryModel),
     cut: session.cut ? entryModel(session.cut) : null };
 }
 
@@ -20,6 +22,30 @@ export function wrapExportText(text, maxWidth, measure) {
   }
   if (line || !lines.length) lines.push(line);
   return lines;
+}
+
+function layoutQuestionExport({ text, width, contentBottom, measure }) {
+  if (!text) return null;
+  const x = 64, y = contentBottom + 40, boxWidth = width - x * 2;
+  const inset = 32, fontSize = 27, lineHeight = 38, columnGap = 28;
+  const titleY = y + 28, textY = titleY + 40 + 14;
+  const availableHeight = 4096 - y - 64;
+  // Most questions use a single full-width column. Unusually newline-heavy
+  // input flows into columns instead of clipping words or shrinking the font.
+  for (let columnCount = 1; columnCount <= 8; columnCount++) {
+    const columnWidth = (boxWidth - inset * 2 - columnGap * (columnCount - 1)) / columnCount;
+    const lines = wrapExportText(text, columnWidth, (value) => measure(value, fontSize));
+    const rows = Math.ceil(lines.length / columnCount);
+    const height = textY - y + rows * lineHeight + 28;
+    if (height > availableHeight) continue;
+    const columns = Array.from({ length: columnCount }, (_, index) => ({
+      x: x + inset + index * (columnWidth + columnGap), y: textY, width: columnWidth,
+      lines: lines.slice(index * rows, (index + 1) * rows),
+    })).filter((column) => column.lines.length);
+    return { title: "當時的問題", x, y, width: boxWidth, height, titleY,
+      fontSize, lineHeight, columns };
+  }
+  throw new RangeError("問題文字過長，無法在安全圖片尺寸內輸出。");
 }
 
 // Fixed, bounded output size is independent of phone DPR. Text expands its row
@@ -50,9 +76,12 @@ export function layoutReadingExport({ model, spread, measure = (text, size) => [
     bottomLines: wrapExportText(model.cut.name, cutTextWidth, (value) => measure(value, 29)),
     width: 185 * RATIO, height: 185, x: padding + cutTextWidth / 2,
     y: mainBottom + 80 + 185 / 2 } : null;
-  const height = Math.ceil(cut ? cut.y + cut.height / 2 + 16 + cut.bottomLines.length * 38 + 34 + 64 : mainBottom + 64);
+  const contentBottom = cut ? cut.y + cut.height / 2 + 16 + cut.bottomLines.length * 38 + 34 : mainBottom;
+  const question = layoutQuestionExport({ text: typeof model.question === "string" ? model.question.trim() : "",
+    width, contentBottom, measure });
+  const height = Math.ceil(question ? question.y + question.height + 64 : contentBottom + 64);
   if (height > 4096) throw new RangeError("牌陣文字過長，無法在安全圖片尺寸內輸出。");
-  return { width, height, cards, cut, titleLines, deckLines, topHeight, bottomHeight, mainBottom };
+  return { width, height, cards, cut, titleLines, deckLines, topHeight, bottomHeight, mainBottom, question };
 }
 
 export function renderReadingExport(canvas, { model, spread, images }) {
@@ -96,6 +125,21 @@ export function renderReadingExport(canvas, { model, spread, images }) {
     drawLines(card.bottomLines, card.x, card.y + card.height / 2 + 12, 29, 38, "#f5deb0");
     drawLines([card.orientation], card.x, card.y + card.height / 2 + 12 + card.bottomLines.length * 38,
       23, 30, card.reversed ? "#f3c49e" : "#a6ddc5");
+  }
+  if (layout.question) {
+    const question = layout.question;
+    context.fillStyle = "#10231ed9";
+    context.fillRect(question.x, question.y, question.width, question.height);
+    context.strokeStyle = "#d6bd7e70"; context.lineWidth = 1;
+    context.strokeRect(question.x, question.y, question.width, question.height);
+    drawLines([question.title], width / 2, question.titleY, 28, 40, "#f5deb0");
+    drawLines(["✦"], question.x + 32, question.titleY, 23, 40, "#cfb97c");
+    drawLines(["✦"], question.x + question.width - 32, question.titleY, 23, 40, "#cfb97c");
+    context.textAlign = "left";
+    for (const column of question.columns) {
+      drawLines(column.lines, column.x, column.y, question.fontSize, question.lineHeight, "#eee9d7");
+    }
+    context.textAlign = "center";
   }
   return layout;
 }

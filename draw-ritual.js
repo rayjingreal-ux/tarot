@@ -17,6 +17,10 @@ export function createDrawRitual(adapter) {
   const retry = find("draw-retry");
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   const spreadOptions = find("draw-spread-options");
+  const question = find("draw-question");
+  const questionCount = find("draw-question-count");
+  function updateQuestionCount() { questionCount.textContent = `${question.value.length} / 200`; }
+  question.addEventListener("input", updateQuestionCount);
   let selectedSpreadId = "single";
   DRAW_SPREADS.forEach((spread) => {
     const option = document.createElement("button");
@@ -141,7 +145,7 @@ export function createDrawRitual(adapter) {
   function repeatShuffle() {
     if (session?.phase !== "shuffling" || heldMs < shuffleDuration || !sceneReady) return;
     session = createDrawSession({ deckKey: context.deckKey, cards: deckCards, method: lastMethod,
-      drawCount: session.drawCount, spreadId: session.spreadId, requireCut: true });
+      question: session.question, drawCount: session.drawCount, spreadId: session.spreadId, requireCut: true });
     session.phase = "shuffling";
     heldMs = 0;
     playToEnd = true;
@@ -325,11 +329,16 @@ export function createDrawRitual(adapter) {
   async function start(method = "manual") {
     if (pending) return;
     const token = generation;
+    // Snapshot before asynchronous loading. Re-shuffles reuse the session copy,
+    // never a hidden input or a previous reading's question.
+    const submittedQuestion = question.value.replace(/\r\n?/g, "\n").trim().slice(0, 200).replace(/[\uD800-\uDBFF]$/, "");
     clearError();
     pending = true;
     lastMethod = method;
     find("draw-start").disabled = true;
     find("draw-fate").disabled = true;
+    question.blur?.();
+    question.disabled = true;
     status.textContent = "正在準備這副牌…";
     surface.setAttribute("aria-busy", "true");
     try {
@@ -338,7 +347,7 @@ export function createDrawRitual(adapter) {
       if (!cards.length) throw new Error("Deck unavailable");
       const layout = getDrawSpread(selectedSpreadId);
       deckCards = cards;
-      session = createDrawSession({ deckKey: context.deckKey, cards, method: lastMethod, drawCount: layout.count, spreadId: layout.id, requireCut: true });
+      session = createDrawSession({ deckKey: context.deckKey, cards, method: lastMethod, question: submittedQuestion, drawCount: layout.count, spreadId: layout.id, requireCut: true });
       session.phase = "shuffling";
       automatic = lastMethod === "starlight";
       playToEnd = automatic;
@@ -362,6 +371,7 @@ export function createDrawRitual(adapter) {
       if (token !== generation || surface.hidden) return;
       find("draw-start").disabled = false;
       find("draw-fate").disabled = false;
+      question.disabled = false;
       showError("這副牌暫時無法準備，請重試或返回牌盒。", () => start(lastMethod));
     }
   }
@@ -404,6 +414,9 @@ export function createDrawRitual(adapter) {
     Object.assign(visual, { progress: 0, holding: false, focus: 0, selectedPosition: -1 });
     returnFocus = document.activeElement;
     context = adapter.getContext();
+    question.value = "";
+    question.disabled = false;
+    updateQuestionCount();
     adapter.onOpen();
     clearError();
     surface.classList.remove("is-starlight", "is-holding", "is-shuffle-complete");
@@ -414,7 +427,7 @@ export function createDrawRitual(adapter) {
     updateSpreadPreview();
     find("draw-start").disabled = false;
     find("draw-fate").disabled = false;
-    phase("setup", "在心裡，默念你的問題", "從下方選擇牌陣，再開始洗牌。切牌另留在左下角，不計入主牌張數。");
+    phase("setup", "在心裡，默念你的問題", "可以寫下問題留作回憶，也可以留白。選擇牌陣，再開始洗牌。");
     surface.hidden = false;
     surface.setAttribute("aria-hidden", "false");
     surface.inert = false;
@@ -432,6 +445,7 @@ export function createDrawRitual(adapter) {
   collect.addEventListener("click", finishShuffle);
   find("draw-ritual-close").addEventListener("click", () => cancel());
   surface.addEventListener("keydown", (event) => {
+    if (event.isComposing) { event.stopPropagation(); return; }
     if (event.key === "Escape") { event.preventDefault(); cancel(); }
     event.stopPropagation();
   });

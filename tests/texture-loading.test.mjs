@@ -67,11 +67,13 @@ test("null loader results fail explicitly and remain retryable", async () => {
   assert.ok(cache.textures[plan[0].key]);
 });
 
-test("controller IDs bind existing markup; obsolete question and spread menus are removed", () => {
+test("controller IDs bind markup; optional question returns without obsolete spread menus", () => {
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const source = readFileSync(new URL("../draw-ritual.js", import.meta.url), "utf8");
   for (const [, id] of source.matchAll(/find\("([^"]+)"\)/g)) assert.ok(html.includes(`id="${id}"`), id);
-  assert.ok(!html.includes('id="draw-question"'));
+  assert.match(html, /<textarea id="draw-question"[^>]*maxlength="200"/);
+  assert.doesNotMatch(html.match(/<textarea id="draw-question"[^>]*>/)?.[0] ?? "", /required/);
+  assert.ok(html.includes('class="draw-intention-sigil" aria-hidden="true"'));
   assert.ok(!html.includes('id="draw-spread"'));
   assert.ok(!html.includes("星光選牌"));
   assert.ok(html.includes('id="draw-collect"'));

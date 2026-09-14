@@ -1,17 +1,17 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createDrawRitual } from "./draw-ritual.js?v=20260913-06";
+import { createDrawRitual } from "./draw-ritual.js?v=20260914-01";
 import { markDrawRevealed, availableDrawPositions } from "./draw-session.js?v=20260913-01";
 import { createRitualEffects } from "./ritual-effects.js?v=20260913-06";
 import { getRitualCardPose } from "./ritual-layout.js?v=20260913-06";
 import { getDrawSpread, getReadingCardPose } from "./draw-spreads.js?v=20260913-01";
 import { createDeckTexturePlan, createDeckTextureCache, getTextureUrl } from "./texture-loading.js?v=20260913-02";
-import { fitReadingLayout, readingNameWidth, readingLayoutMetrics } from "./reading-layout.js?v=20260913-06";
+import { fitReadingLayout, readingNameWidth, readingLayoutMetrics } from "./reading-layout.js?v=20260914-01";
 import { getCardDisplayName } from "./card-names.js?v=20260913-04";
 import { createRingSelection } from "./ring-selection.js?v=20260913-05";
 import { getCardFlipPose } from "./card-flip.js?v=20260913-05";
-import { createReadingExportModel, renderReadingExport, readingExportBlob } from "./reading-export.js?v=20260913-06";
-import { createReadingImageShare } from "./reading-share.js?v=20260913-07";
+import { createReadingExportModel, renderReadingExport, readingExportBlob } from "./reading-export.js?v=20260914-01";
+import { createReadingImageShare } from "./reading-share.js?v=20260914-01";
 import { calculateDeckCarouselCameraFit } from "./deck-carousel-fit.js?v=20260913-06";
 
 
@@ -994,6 +994,7 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (event.target === readingScroll) return;
+  if (event.target.closest?.("#reading-question")) return;
   if (event.target.closest?.('input, textarea, select, button, a, [contenteditable="true"]')) return;
   if (activeMode === "cards" && !isCardTransitionActive()) {
     if (!readingResult && event.key === "ArrowLeft") selectCard(selectedCard - 1);
@@ -1860,6 +1861,14 @@ function updateReadingResult() {
   document.querySelector("#reveal-reading").disabled = Boolean(readingResult && revealingResult === readingResult);
   document.querySelector("#export-reading").hidden = !readingResult;
   document.querySelector("#export-reading").disabled = exportingReading || readingFlips.size > 0 || Boolean(revealingResult);
+  const question = String(readingResult?.session.question ?? "").trim();
+  const questionPanel = document.querySelector("#reading-question");
+  const questionText = document.querySelector("#reading-question-text");
+  questionPanel.hidden = !question;
+  if (questionText.textContent !== question) {
+    questionText.textContent = question;
+    questionText.scrollTop = 0;
+  }
   if (!readingResult) return;
   const { session } = readingResult;
   const spread = getDrawSpread(session.spreadId);
@@ -4420,6 +4429,8 @@ function measureReadingLayout() {
   inspection.dataset.readingCompact = String(metrics.compact);
   const header = document.querySelector("#spread-result > header").getBoundingClientRect();
   const footer = cardControls.getBoundingClientRect();
+  const questionPanel = document.querySelector("#reading-question");
+  const questionHeight = questionPanel.hidden ? 0 : questionPanel.getBoundingClientRect().height;
   const labelHeights = { mainTopLabelHeight: 0, mainBottomLabelHeight: 0, cutTopLabelHeight: 0,
     cutBottomLabelHeight: 0, detailTopLabelHeight: 0, detailBottomLabelHeight: 0 };
   for (const label of document.querySelectorAll(".spread-card-label")) {
@@ -4440,7 +4451,11 @@ function measureReadingLayout() {
   readingScreenLayout = fitReadingLayout({ width: bounds.width, height: bounds.height,
     top: Math.max(16, header.bottom - bounds.top + metrics.headerGap), footerTop: footer.top - bounds.top,
     bottomPadding: Math.max(16, bounds.bottom - footer.bottom),
-    spread, ...labelHeights, detail: readingResult.detail !== null });
+    spread, ...labelHeights, questionHeight, detail: readingResult.detail !== null });
+  if (readingScreenLayout.question) {
+    const resultBounds = document.querySelector("#spread-result").getBoundingClientRect();
+    questionPanel.style.top = `${bounds.top - resultBounds.top + readingScreenLayout.question.top}px`;
+  }
   document.querySelector("#spread-result").style.setProperty("--reading-label-gap", `${readingScreenLayout.labelGap}px`);
   if (readingLayoutSession !== readingResult.session) {
     readingScrollOffset = 0;
@@ -4806,6 +4821,7 @@ resizeObserver.observe(stage);
 const readingTextObserver = new ResizeObserver(() => { readingLayoutDirty = true; });
 readingTextObserver.observe(cardControls);
 readingTextObserver.observe(document.querySelector("#spread-result > header"));
+readingTextObserver.observe(document.querySelector("#reading-question"));
 document.fonts?.ready.then(() => { readingLayoutDirty = true; });
 
 loading.classList.add("is-hidden");

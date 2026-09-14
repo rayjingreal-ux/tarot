@@ -96,6 +96,23 @@ test("each revealed name appears in overview; hidden cards never disclose identi
     document: { querySelector: get, createElement: () => new Element(), activeElement: null },
   });
   state.updateReadingResult();
+  assert.equal(get("#reading-question").hidden, true, "blank questions are omitted");
+  const literalQuestion = "<img src=x onerror=alert(1)>\n未來，我想如何前進？";
+  session.question = `  ${literalQuestion}  `;
+  state.updateReadingResult();
+  assert.equal(get("#reading-question").hidden, false);
+  assert.equal(get("#reading-question-text").textContent, literalQuestion, "user input is literal text, never HTML");
+  assert.equal(get("#reading-question-text").scrollTop, 0);
+  get("#reading-question-text").scrollTop = 18;
+  state.readingResult.detail = 0;
+  state.updateReadingResult();
+  assert.equal(get("#reading-question").hidden, false, "the question remains readable in detail view");
+  assert.equal(get("#reading-question-text").scrollTop, 18, "flips and detail refreshes preserve a long note's reading position");
+  session.question = "  \n  ";
+  state.updateReadingResult();
+  assert.equal(get("#reading-question").hidden, true);
+  assert.equal(get("#reading-question-text").textContent, "");
+  state.readingResult.detail = null;
   const identityLabels = () => get("#spread-result-labels").children.filter((label) => label.dataset.labelSide === "bottom");
   const positionLabels = () => get("#spread-result-labels").children.filter((label) => label.dataset.labelSide === "top");
   const labels = identityLabels();
@@ -145,6 +162,13 @@ test("each revealed name appears in overview; hidden cards never disclose identi
       }
     }
   }
+  session.question = "會清除的上一輪問題";
+  state.updateReadingResult();
+  state.readingResult = null;
+  state.readingScroll = {};
+  state.updateReadingResult();
+  assert.equal(get("#reading-question").hidden, true);
+  assert.equal(get("#reading-question-text").textContent, "", "discarding the result clears the question from the DOM");
 });
 
 test("scrollable mobile results still rotate through an edge-on frame before revealing names", () => {
@@ -191,6 +215,7 @@ test("result markup removes the bottom numeric/cut strip and binds background re
   }
   assert.ok(source.includes("if (!hit) { showReadingOverview(); return; }"));
   assert.ok(source.includes("readingLabelPoint.y += card.scale.y * 0.505"));
+  assert.ok(source.includes('if (event.target.closest?.("#reading-question")) return;'), "question scroll keys cannot flip a card");
 });
 
 test("clipped main cards cannot intercept the pinned cut or blank-space clicks", () => {
