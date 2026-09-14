@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { createReadingOrbSeeds, getReadingOrbPose, getReadingOrbReturnPose } from "./reading-orb-motion.js?v=20260914-03";
+import { createReadingOrbSeeds, getReadingOrbFieldPoses, getReadingOrbReturnPose,
+  createReadingCometHistory, recordReadingCometHead } from "./reading-orb-motion.js?v=20260915-01";
 import { readingArrivalEnvelope } from "./reading-journey-timing.js?v=20260914-03";
 
 const vertexShader = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
@@ -25,6 +26,13 @@ void main() {
   float edge = smoothstep(0.,.04,min(min(vUv.x,1.-vUv.x),min(vUv.y,1.-vUv.y)));
   gl_FragColor = vec4(mix(ink.rgb,uColor,uTint), ink.a * edge * uOpacity);
   #include <colorspace_fragment>
+}`;
+const cometFragment = `varying vec2 vUv; uniform float uOpacity; uniform vec3 uColor;
+void main() {
+  float across = (vUv.y - .5) * 2.;
+  float feather = exp(-across*across*5.) * (1.-smoothstep(.65,1.,abs(across)));
+  float wake = pow(max(0.,vUv.x),1.45);
+  gl_FragColor = vec4(uColor + vec3(.16)*exp(-across*across*32.), feather * wake * uOpacity);
 }`;
 const smooth = (n) => { const t = Math.min(1, Math.max(0, n)); return t * t * (3 - 2 * t); };
 
@@ -100,7 +108,10 @@ export function createReadingJourney(scene, { reducedMotion = false, random = Ma
   const runes = new THREE.LineSegments(runeGeometry, runeMaterial);
   runes.name = "Fleeting astral sigils"; runes.renderOrder = 501; runes.frustumCulled = false; root.add(runes);
   const runeVertices = [[0,1],[.6,0],[.6,0],[0,-1],[0,-1],[-.6,0],[-.6,0],[0,1],[0,1.5],[0,-1.5],[-1,0],[1,0]];
-  const cards = [], targets = new Map(), identity = new THREE.Quaternion();
+  const cards = [], targets = new Map(), identity = new THREE.Quaternion(), fieldPoses = [];
+  const trailPoint = new THREE.Vector3(), trailTangent = new THREE.Vector3(), trailView = new THREE.Vector3();
+  const trailSide = new THREE.Vector3(), lastTrailSide = new THREE.Vector3();
+  let fieldSeeds = [];
   let disposed = false, currentJourney = null, currentCount = 0, returning = false;
   function ensureCount(count) {
     while (cards.length < count + 1) {
@@ -112,14 +123,26 @@ export function createReadingJourney(scene, { reducedMotion = false, random = Ma
       const card = new THREE.Mesh(geometry, material);
       card.name = "Mist becoming a card back";
       card.renderOrder = 504; card.frustumCulled = false; card.visible = false; carrier.add(card);
+      const history = createReadingCometHistory();
+      const cometGeometry = new THREE.BufferGeometry();
+      cometGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(history.capacity * 6), 3).setUsage(THREE.DynamicDrawUsage));
+      cometGeometry.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(history.capacity * 4), 2).setUsage(THREE.DynamicDrawUsage));
+      const indices = [];
+      for (let i = 0; i < history.capacity - 1; i++) indices.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+      cometGeometry.setIndex(indices); cometGeometry.setDrawRange(0, 0);
+      const comet = new THREE.Mesh(cometGeometry, shader(cometFragment, { uColor: { value: new THREE.Color() }, uOpacity: { value: 0 } }));
+      comet.material.side = THREE.DoubleSide;
+      comet.name = `Comet wake ${cards.length + 1}`; comet.renderOrder = 502; comet.frustumCulled = false; comet.visible = false;
+      arrivals.add(comet);
       cards.push({ carrier, card, light: glow(carrier, 0xffffff, 503), core: glow(carrier, 0xffffff, 505),
         from: new THREE.Vector3(), fromQuaternion: new THREE.Quaternion(), pose: {}, seed: null,
-        size: 1, lightOpacity: 0, coreOpacity: 0 });
+        size: 1, lightOpacity: 0, coreOpacity: 0, comet, history });
     }
   }
   function hide() {
     root.visible = arrivals.visible = false;
     currentJourney = null; returning = false; targets.clear();
+    cards.forEach(({ comet, history }) => { comet.visible = false; history.count = 0; history.head = -1; history.sampledAt = -Infinity; });
   }
   // App poses use shared scratch storage; take a copy, never retain that reference.
   function setTarget(slot, pose, clipY = null) {
@@ -131,24 +154,62 @@ export function createReadingJourney(scene, { reducedMotion = false, random = Ma
   function begin(journeyId, count) {
     currentJourney = journeyId; currentCount = count; returning = false;
     const seeds = createReadingOrbSeeds(count + 1, random);
+    fieldSeeds = seeds.slice(0, count);
     cards.forEach((orb, i) => {
       root.add(orb.carrier); orb.carrier.position.set(0, 0, 0); orb.carrier.quaternion.identity();
       orb.carrier.visible = i < count; orb.card.visible = false;
+      orb.comet.visible = false; orb.history.count = 0; orb.history.head = -1; orb.history.sampledAt = -Infinity;
       if (i > count) return;
       orb.seed = seeds[i];
       const color = new THREE.Color().setHSL(orb.seed.hue, .74, .65);
       orb.light.material.uniforms.uColor.value.copy(color);
+      orb.comet.material.uniforms.uColor.value.copy(color);
       orb.card.material.uniforms.uColor.value.copy(color);
       orb.core.material.uniforms.uColor.value.copy(color).lerp(new THREE.Color(0xffffff), .72);
       for (const mesh of [orb.light, orb.core, orb.card]) mesh.material.uniforms.uClipY.value.set(-1, -1);
     });
+  }
+  function updateComet(orb, position, time, camera, opacity, width) {
+    const { comet, history } = orb;
+    comet.visible = !reducedMotion && opacity > .001;
+    if (!comet.visible) return;
+    recordReadingCometHead(history, position, time);
+    const ageAt = (i) => time - history.times[(history.head - i + history.capacity) % history.capacity];
+    let count = history.count;
+    for (let i = 1; i < count; i++) if (ageAt(i) >= 950) { count = i + 1; break; }
+    const ageSpan = Math.max(1, Math.min(950, ageAt(count - 1)));
+    const positions = comet.geometry.attributes.position.array, uv = comet.geometry.attributes.uv.array;
+    const offsetAt = (i) => ((history.head - i + history.capacity) % history.capacity) * 3;
+    lastTrailSide.setFromMatrixColumn(camera.matrixWorld, 0);
+    for (let i = 0; i < count; i++) {
+      const offset = offsetAt(i), before = offsetAt(Math.max(0, i - 1)), after = offsetAt(Math.min(count - 1, i + 1));
+      trailPoint.fromArray(history.positions, offset);
+      trailTangent.fromArray(history.positions, before).sub(trailSide.fromArray(history.positions, after));
+      trailView.copy(camera.position).sub(trailPoint);
+      trailSide.crossVectors(trailTangent, trailView);
+      if (trailSide.lengthSq() < 1e-10) trailSide.copy(lastTrailSide);
+      else trailSide.normalize();
+      if (trailSide.dot(lastTrailSide) < 0) trailSide.negate();
+      lastTrailSide.copy(trailSide);
+      const life = Math.max(0, 1 - ageAt(i) / ageSpan), radius = width * Math.pow(life, .65);
+      for (let side = 0; side < 2; side++) {
+        const vertex = i * 6 + side * 3, sign = side ? 1 : -1;
+        positions[vertex] = trailPoint.x + trailSide.x * radius * sign;
+        positions[vertex + 1] = trailPoint.y + trailSide.y * radius * sign;
+        positions[vertex + 2] = trailPoint.z + trailSide.z * radius * sign;
+        uv[i * 4 + side * 2] = life; uv[i * 4 + side * 2 + 1] = side;
+      }
+    }
+    comet.geometry.attributes.position.needsUpdate = comet.geometry.attributes.uv.needsUpdate = true;
+    comet.geometry.setDrawRange(0, Math.max(0, count - 1) * 6);
+    comet.material.uniforms.uOpacity.value = opacity;
   }
   function update({ active, elapsedMs = 0, arrival = 0, journeyId = 0, spread, backTexture, camera }) {
     if (disposed || !active || !spread || !backTexture) { hide(); return; }
     ensureCount(spread.count);
     const fresh = currentJourney !== journeyId || currentCount !== spread.count;
     if (fresh) begin(journeyId, spread.count);
-    root.visible = true; arrivals.visible = arrival > 0;
+    root.visible = arrivals.visible = true;
     root.position.copy(camera.position); root.quaternion.copy(camera.quaternion);
     const depth = Math.max(16, Math.min(48, camera.far - 4));
     veil.position.z = -Math.min(60, camera.far - 1);
@@ -190,9 +251,10 @@ export function createReadingJourney(scene, { reducedMotion = false, random = Ma
     });
     if (!returning && (arrival <= 0 || fresh)) {
       root.updateMatrixWorld(true);
+      getReadingOrbFieldPoses(fieldSeeds, { elapsedMs, aspect, fov: camera.fov, reducedMotion }, fieldPoses);
       cards.forEach((orb, i) => {
         if (i >= spread.count) return;
-        const pose = getReadingOrbPose(orb.seed, { elapsedMs, aspect, fov: camera.fov, reducedMotion }, orb.pose);
+        const pose = fieldPoses[i];
         orb.carrier.position.set(pose.x, pose.y, pose.z); orb.size = pose.size;
         orb.light.scale.setScalar(pose.size * 1.25); orb.core.scale.setScalar(pose.size * .23);
         orb.light.material.uniforms.uOpacity.value = entry * pose.shimmer * .68;
@@ -203,6 +265,7 @@ export function createReadingJourney(scene, { reducedMotion = false, random = Ma
         // Capture the transform actually presented on this waiting frame. Do not
         // resample the random path when loading finishes or the camera changes.
         orb.carrier.getWorldPosition(orb.from); orb.carrier.getWorldQuaternion(orb.fromQuaternion);
+        updateComet(orb, orb.from, elapsedMs, camera, entry * .85, orb.size * .12);
       });
     }
     if (arrival > 0) {
@@ -222,6 +285,8 @@ export function createReadingJourney(scene, { reducedMotion = false, random = Ma
         carrier.position.set(pose.x, pose.y, pose.z);
         carrier.quaternion.copy(isCut ? identity : orb.fromQuaternion).slerp(identity, smooth(envelope.travel));
         const travel = smooth(envelope.travel);
+        if (!isCut) updateComet(orb, carrier.position, elapsedMs, camera,
+          .85 * (1 - envelope.unfold), orb.size * .12 * (1 - travel) + target.scale * .08 * travel);
         const glowSize = (isCut ? target.scale : orb.size * 1.25) * (1 - travel) + target.scale * 1.9 * travel;
         light.scale.set(glowSize * (1 + envelope.unfold * .25), glowSize * (1 + envelope.unfold * .7), 1);
         light.material.uniforms.uOpacity.value = (isCut ? envelope.unfold : orb.lightOpacity * (1 - travel) + .7 * travel) * (1 - envelope.clarify);
@@ -248,6 +313,7 @@ export function createReadingJourney(scene, { reducedMotion = false, random = Ma
     disposed = true; hide(); root.removeFromParent(); arrivals.removeFromParent();
     geometry.dispose(); starsGeometry.dispose(); trailsGeometry.dispose(); runeGeometry.dispose(); starTexture.dispose();
     materials.forEach((material) => material.dispose());
+    cards.forEach(({ comet }) => comet.geometry.dispose());
     root.clear(); arrivals.clear(); // The shared deck back texture is not owned.
   }
   return { update, hide, setTarget, dispose, arrivalLayer: arrivals };

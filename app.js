@@ -3,7 +3,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createDrawRitual } from "./draw-ritual.js?v=20260914-03";
 import { markDrawRevealed, availableDrawPositions } from "./draw-session.js?v=20260913-01";
 import { createRitualEffects } from "./ritual-effects.js?v=20260913-06";
-import { createReadingJourney } from "./reading-journey.js?v=20260914-03";
+import { createReadingJourney } from "./reading-journey.js?v=20260915-01";
 import { readingArrivalEnvelope } from "./reading-journey-timing.js?v=20260914-03";
 import { getRitualCardPose } from "./ritual-layout.js?v=20260913-06";
 import { getDrawSpread, getReadingCardPose } from "./draw-spreads.js?v=20260913-01";
@@ -12,8 +12,8 @@ import { fitReadingLayout, readingNameWidth, readingLayoutMetrics } from "./read
 import { getCardDisplayName } from "./card-names.js?v=20260913-04";
 import { createRingSelection } from "./ring-selection.js?v=20260913-05";
 import { getCardFlipPose } from "./card-flip.js?v=20260913-05";
-import { createReadingExportModel, renderReadingExport, readingExportBlob } from "./reading-export.js?v=20260914-02";
-import { createReadingImageShare } from "./reading-share.js?v=20260914-03";
+import { createReadingExportModel, renderReadingExport, readingExportBlob } from "./reading-export.js?v=20260915-01";
+import { createReadingImageShare } from "./reading-share.js?v=20260915-01";
 import { calculateDeckCarouselCameraFit } from "./deck-carousel-fit.js?v=20260913-06";
 
 

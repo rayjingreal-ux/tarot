@@ -5,7 +5,8 @@ import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { DRAW_SPREADS } from "../draw-spreads.js";
 import { readingArrivalEnvelope } from "../reading-journey-timing.js";
-import { createReadingOrbSeeds, getReadingOrbPose, getReadingOrbReturnPose } from "../reading-orb-motion.js";
+import { createReadingOrbSeeds, getReadingOrbPose, getReadingOrbReturnPose,
+  getReadingOrbFieldPoses, createReadingCometHistory, recordReadingCometHead } from "../reading-orb-motion.js";
 
 const threeUrl = pathToFileURL(resolve("vendor/three/three.module.js")).href;
 const THREE = await import(threeUrl);
@@ -146,9 +147,66 @@ test("reduced motion freezes waiting geometry; hide/retry reset paths and dispos
     const data = []; h.scene.traverse((node) => data.push({ p: node.position.toArray(), r: node.rotation.toArray(), s: node.scale.toArray(), vertices: Array.from(node.geometry?.attributes.position?.array ?? []) })); return data;
   };
   const before = positions(); h.update(spread, 30000); assert.deepEqual(positions(), before);
+  assert.ok(h.effect.arrivalLayer.children.filter((node) => node.name.startsWith("Comet wake")).every((node) => !node.visible));
   const firstColours = h.orbs().map(color);
   let borrowedDisposed = false; h.backTexture.addEventListener("dispose", () => { borrowedDisposed = true; });
   h.effect.hide(); assert.ok(h.scene.children.every((node) => !node.visible));
   h.update(spread, 1000); assert.notDeepEqual(h.orbs().map(color), firstColours);
   h.effect.dispose(); h.effect.dispose(); assert.equal(h.scene.children.length, 0); assert.equal(borrowedDisposed, false);
+});
+
+test("nearby lights spiral with reciprocal contraction and separation, without frame-dependent random jumps", () => {
+  const seeds = createReadingOrbSeeds(2, seeded());
+  Object.assign(seeds[1], { wander: seeds[0].wander, drift: seeds[0].drift, phase: seeds[0].phase + .7 });
+  let angleMax = 0, radiusMin = Infinity, radiusMax = 0;
+  for (let elapsedMs = 0; elapsedMs < 16000; elapsedMs += 32) {
+    const options = { elapsedMs, aspect: 1.7 }, [a, b] = getReadingOrbFieldPoses(seeds, options);
+    const x = a.bx - b.bx, y = a.by - b.by;
+    const tx = x + a.dx - b.dx, ty = y + a.dy - b.dy;
+    if (Math.hypot(x, y) > .005) {
+      angleMax = Math.max(angleMax, Math.abs(Math.atan2(x * ty - y * tx, x * tx + y * ty)));
+      const radius = Math.hypot(tx, ty) / Math.hypot(x, y);
+      radiusMin = Math.min(radiusMin, radius); radiusMax = Math.max(radiusMax, radius);
+    }
+    assert.ok(Math.abs(a.dx + b.dx) < 1e-10 && Math.abs(a.dy + b.dy) < 1e-10);
+    const [later] = getReadingOrbFieldPoses(seeds, { ...options, elapsedMs: elapsedMs + 1 });
+    assert.ok(Math.hypot(a.x - later.x, a.y - later.y, a.z - later.z) < .04, "continuous through random waypoint boundaries");
+    getReadingOrbFieldPoses([...seeds].reverse(), options).reverse().forEach((pose, i) => {
+      for (const key of Object.keys(pose)) assert.ok(Math.abs(pose[key] - [a, b][i][key]) < 1e-9, "pair order cannot change the motion");
+    });
+  }
+  assert.ok(angleMax > 1.5, "visible winding, not only independent translation");
+  assert.ok(radiusMin < .85 && radiusMax > 1.1, "the pair both attracts and separates");
+});
+
+test("comet history remains bounded and captures the real current head, resetting for a fresh timeline", () => {
+  const history = createReadingCometHistory();
+  for (let time = 0; time <= 60000; time += 8) recordReadingCometHead(history, { x: time / 1000, y: 1, z: -12 }, time);
+  assert.equal(history.count, 48); assert.equal(history.positions.length, 144);
+  assert.equal(history.positions[history.head * 3], 60); assert.equal(history.times[history.head], 60000);
+  recordReadingCometHead(history, { x: -3, y: 2, z: -10 }, 0);
+  assert.equal(history.count, 1); assert.equal(history.head, 0);
+  assert.deepEqual(Array.from(history.positions.slice(0, 3)), [-3, 2, -10]);
+});
+
+test("each same-colour comet follows its actual world head through return, then fades before materialization", () => {
+  const h = harness(), spread = DRAW_SPREADS.find((item) => item.id === "free-7");
+  for (let time = 1000; time <= 2504; time += 16) h.update(spread, time);
+  const wakes = () => h.effect.arrivalLayer.children.filter((node) => node.name.startsWith("Comet wake") && node.visible);
+  assert.equal(wakes().length, 7, "cut has no extra waiting comet");
+  const checkHeads = () => wakes().forEach((wake, i) => {
+    const positions = wake.geometry.attributes.position.array;
+    const centre = new THREE.Vector3((positions[0] + positions[3]) / 2, (positions[1] + positions[4]) / 2, (positions[2] + positions[5]) / 2);
+    assert.ok(centre.distanceTo(h.orbs()[i].getWorldPosition(new THREE.Vector3())) < .00001);
+    assert.deepEqual(wake.material.uniforms.uColor.value.toArray(), color(h.orbs()[i]));
+    assert.ok(wake.geometry.drawRange.count > 0 && wake.geometry.drawRange.count <= 47 * 6);
+    assert.ok(Array.from(positions).every(Number.isFinite));
+  });
+  checkHeads();
+  for (let i = 0; i <= 7; i++) h.effect.setTarget(i, { x: (i - 3) * .3, y: -.4, z: 1.05, scale: .35 });
+  h.update(spread, 2520, .01); checkHeads();
+  h.update(spread, 5000, .9); assert.equal(wakes().length, 0);
+  h.effect.hide(); h.update(spread, 0, 0, 2);
+  assert.ok(h.effect.arrivalLayer.children.filter((node) => node.name.startsWith("Comet wake")).every((node) => !node.visible || node.geometry.drawRange.count === 0));
+  h.effect.dispose();
 });

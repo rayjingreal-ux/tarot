@@ -77,13 +77,15 @@ test("all fourteen exports keep every question character below main cards and cu
         const layout = layoutReadingExport({ model, spread, width });
         const block = layout.question;
         assert.ok(layout.height <= 4096, `${spread.id}: ${layout.height}`);
-        assert.equal(block.title, "銘記於心的念想");
+        assert.equal(block.title, undefined);
+        assert.equal(block.titleY, undefined);
         const cutBottom = layout.cut.y + layout.cut.height / 2 + 12
           + layout.cut.bottomLines.length * 38 + 30;
         assert.ok(block.y > cutBottom && block.y > layout.mainBottom);
         assert.ok(block.y + block.height < layout.height);
         assert.equal(block.columns.flatMap((column) => column.lines).join(""), question.replaceAll("\n", ""));
         for (const column of block.columns) {
+          assert.equal(column.y, block.y + 28, "no blank title row in the image");
           assert.ok(column.x >= block.x && column.x + column.width <= block.x + block.width);
           assert.ok(column.lines.every((line) => [...line].length * block.fontSize <= column.width));
           assert.ok(column.y + column.lines.length * block.lineHeight <= block.y + block.height);
@@ -101,6 +103,7 @@ test("a usual question is one readable column below the reading, including when 
   assert.equal(layout.question.fontSize, 27);
   assert.ok(layout.question.y > layout.mainBottom);
   assert.deepEqual(layout.question.columns[0].lines, model.question.split("\n"));
+  assert.equal(layout.question.height, 28 + layout.question.columns[0].lines.length * 38 + 28);
 });
 
 test("export wraps complete Chinese titles instead of truncating text", () => {
@@ -141,10 +144,10 @@ test("render includes the complete question as plain image text after every card
   const images = new Map([...model.draws, model.cut].map((entry) => [entry.index, { width: 610, height: 1010 }]));
   const layout = renderReadingExport(canvas, { model, spread, images });
   assert.equal(draws.length, 14);
-  const questionText = text.filter((line) => line.y >= layout.question.columns[0].y);
+  const questionText = text.filter((line) => line.y >= layout.question.y);
   assert.equal(questionText.map((line) => line.value).join(""), model.question.replaceAll("\n", ""));
   assert.ok(questionText.every((line) => line.drawnCards === 14));
-  assert.ok(text.some((line) => line.value === "銘記於心的念想" && line.y === layout.question.titleY));
+  assert.ok(!questionText.some((line) => /銘記於心的念想|✦/.test(line.value)));
   assert.equal(canvas.height, layout.height);
 });
 

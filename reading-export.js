@@ -28,7 +28,7 @@ function layoutQuestionExport({ text, width, contentBottom, measure }) {
   if (!text) return null;
   const x = 64, y = contentBottom + 40, boxWidth = width - x * 2;
   const inset = 32, fontSize = 27, lineHeight = 38, columnGap = 28;
-  const titleY = y + 28, textY = titleY + 40 + 14;
+  const textY = y + 28;
   const availableHeight = 4096 - y - 64;
   // Most questions use a single full-width column. Unusually newline-heavy
   // input flows into columns instead of clipping words or shrinking the font.
@@ -42,7 +42,7 @@ function layoutQuestionExport({ text, width, contentBottom, measure }) {
       x: x + inset + index * (columnWidth + columnGap), y: textY, width: columnWidth,
       lines: lines.slice(index * rows, (index + 1) * rows),
     })).filter((column) => column.lines.length);
-    return { title: "銘記於心的念想", x, y, width: boxWidth, height, titleY,
+    return { x, y, width: boxWidth, height,
       fontSize, lineHeight, columns };
   }
   throw new RangeError("問題文字過長，無法在安全圖片尺寸內輸出。");
@@ -132,9 +132,6 @@ export function renderReadingExport(canvas, { model, spread, images }) {
     context.fillRect(question.x, question.y, question.width, question.height);
     context.strokeStyle = "#d6bd7e70"; context.lineWidth = 1;
     context.strokeRect(question.x, question.y, question.width, question.height);
-    drawLines([question.title], width / 2, question.titleY, 28, 40, "#f5deb0");
-    drawLines(["✦"], question.x + 32, question.titleY, 23, 40, "#cfb97c");
-    drawLines(["✦"], question.x + question.width - 32, question.titleY, 23, 40, "#cfb97c");
     context.textAlign = "left";
     for (const column of question.columns) {
       drawLines(column.lines, column.x, column.y, question.fontSize, question.lineHeight, "#eee9d7");
