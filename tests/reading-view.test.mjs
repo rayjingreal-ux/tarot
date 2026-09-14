@@ -216,10 +216,11 @@ test("arrival uses final measured card positions, remains face down and never sh
     const card = new THREE.Group(); Object.assign(card.userData, { cardIndex: index, reflectionMaterials: [] }); return card;
   });
   let measurements = 0;
+  const destinations = new Map();
   const rects = [{ x: 100, y: 180, height: 101 }, { x: 200, y: 180, height: 101 }, { x: 30, y: 510, height: 60 }];
   const state = bind(["updateRitualCards", "readingScreenCardPose"], {
     THREE, readingArrivalEnvelope, drawRitual: { visual, session }, readingResult: null,
-    readingJourney: { clearArrival() {}, showArrival() {} }, cardMeshes: cards,
+    readingJourney: { setTarget(slot, pose, clip) { destinations.set(slot, { ...pose, clip }); } }, cardMeshes: cards,
     readingLayoutDirty: true, readingScreenLayout: null, readingScrollOffset: 0,
     readingLabelPoint: new THREE.Vector3(), readingProjectionPoint: new THREE.Vector3(), ritualPose: {},
     screenToReadingPlane: (x, y, target) => target.set(x / 100, -y / 100, 1.05),
@@ -233,6 +234,13 @@ test("arrival uses final measured card positions, remains face down and never sh
   assert.ok(cards.every((card) => !card.visible)); assert.equal(measurements, 0);
   visual.journeyArrival = .5; state.updateRitualCards(1 / 60, 5.9);
   assert.equal(state.readingResult.session, session); assert.equal(measurements, 1);
+  assert.ok(cards.every((card) => !card.visible), "real sharp cards cannot overwrite the returning light points");
+  assert.equal(destinations.size, 3, "destinations are available while the real backs remain hidden");
+  state.stage = { clientHeight: 700 }; state.renderer = { getPixelRatio: () => 2 };
+  Object.assign(state.readingScreenLayout, { scrollable: true, top: 100, bottom: 490 });
+  state.updateRitualCards(1 / 60, 6);
+  assert.deepEqual(Array.from(destinations.get(0).clip), [420, 1200], "proxy clipping uses drawing-buffer pixels");
+  assert.equal(destinations.get(2).clip, null, "the pinned cut is not clipped with the main cards");
   visual.journeyArrival = 1; state.updateRitualCards(1 / 60, 6.8);
   cards.slice(0, 3).forEach((card, i) => {
     const target = state.readingScreenCardPose(rects[i]);
@@ -289,6 +297,32 @@ test("scroll rendering clips only main cards and always restores scene state", (
     assert.deepEqual(snapshots, [[false, true, true, false, true, true, false], [true, false, false, false, true, false, true]]);
     assert.deepEqual(scissors, [[0, 199, 390, 310]]);
     assert.ok(main.visible && cut.visible && decoration.visible && !hiddenBox.visible && light.visible);
+    assert.ok(renderer.autoClear && !renderer.scissorTest);
+  }
+});
+
+test("mobile arrival mist renders after the sharp backs, with overlay and scissor state restored even on failure", () => {
+  for (const failOverlay of [false, true]) {
+    const main = { visible: true, userData: { cardIndex: 0 } }, cut = { visible: true, userData: { cardIndex: 1 } };
+    const overlay = { visible: true }, background = { visible: true }, group = { visible: true };
+    const session = { draws: [{ index: 0 }], cut: { index: 1 } }, snapshots = [];
+    const renderer = { autoClear: true, scissorTest: false,
+      render() {
+        snapshots.push([main.visible, cut.visible, overlay.visible, background.visible, this.scissorTest]);
+        if (failOverlay && snapshots.length === 3) throw new Error("overlay failed");
+      },
+      setScissor() {}, setScissorTest(value) { this.scissorTest = value; }, clearDepth() {},
+    };
+    const state = bind(["renderStageScene"], { renderer, isReadingScrollable: () => false,
+      drawRitual: { isOpen: true, visual: { journeyArrival: .9 }, session }, readingJourney: { arrivalLayer: overlay },
+      scene: { children: [group, background, overlay] }, camera: {}, cardsGroup: group, cardMeshes: [main, cut],
+      stage: { clientWidth: 390, clientHeight: 700 }, readingScreenLayout: { scrollable: true, top: 100, bottom: 490 },
+      readingResult: { session },
+    });
+    if (failOverlay) assert.throws(() => state.renderStageScene(), /overlay failed/);
+    else state.renderStageScene();
+    assert.deepEqual(snapshots, [[false, true, false, true, false], [true, false, false, false, true], [false, false, true, false, false]]);
+    assert.ok(main.visible && cut.visible && overlay.visible && background.visible);
     assert.ok(renderer.autoClear && !renderer.scissorTest);
   }
 });

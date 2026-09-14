@@ -1,4 +1,4 @@
-export const READING_JOURNEY_TIMING = Object.freeze({ minimumMs: 5000, arrivalMs: 1800 });
+export const READING_JOURNEY_TIMING = Object.freeze({ minimumMs: 5000, arrivalMs: 3200 });
 
 // Count presented time, not wall time: a hidden tab or a stalled frame cannot
 // consume the journey. Loading runs concurrently and never reveals identities.
@@ -34,9 +34,14 @@ export function createReadingJourneyGate({ onFrame, now = () => performance.now(
 }
 
 export function readingArrivalEnvelope(progress, slot, count, reducedMotion = false) {
-  const delay = Math.max(0, slot) / Math.max(1, count - 1) * 0.28;
-  const local = Math.min(1, Math.max(0, (progress - delay) / 0.72));
-  const eased = local * local * (3 - 2 * local);
-  return { visible: local > 0, scale: reducedMotion ? eased : eased * (0.8 + 0.2 * eased),
-    glow: Math.sin(Math.PI * local) * (reducedMotion ? 0.3 : 0.9), depth: reducedMotion ? 0 : (1 - eased) * 0.38 };
+  const delay = Math.max(0, slot) / Math.max(1, count - 1) * .12;
+  const local = Math.min(1, Math.max(0, (progress - delay) / (1 - delay)));
+  const smooth = (n) => { const t = Math.min(1, Math.max(0, n)); return t * t * (3 - 2 * t); };
+  const travel = Math.min(1, local / .53);
+  const unfold = smooth((local - .53) / .25);
+  const clarify = smooth((local - .8) / .2);
+  // An opaque mist back covers the real back at the start of clarification,
+  // then gradually fades to the lit material. Mobile renders this overlay last.
+  return { local, travel, unfold, clarify, visible: local >= .8, scale: 1,
+    glow: Math.sin(Math.PI * local) * (reducedMotion ? .3 : .9), depth: 0 };
 }

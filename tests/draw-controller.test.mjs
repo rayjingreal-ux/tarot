@@ -359,7 +359,7 @@ test("a fast load still waits five visible seconds before backs materialize, wit
   assert.equal(h.controller.visual.journeyArrival, 0); assert.equal(h.commits.length, 0);
   h.advance(200); assert.ok(h.controller.visual.journeyArrival > 0);
   assert.equal(h.commits.length, 0, "the luminous arrival has its own time");
-  h.advance(1800); await h.settle();
+  h.advance(READING_JOURNEY_TIMING.arrivalMs); await h.settle();
   assert.equal(h.commits.length, 1); assert.equal(h.commits[0].session, session);
   assert.equal(JSON.stringify([session.draws, session.cut]), original);
   assert.equal(h.controller.visual.journeyActive, false);
@@ -372,7 +372,7 @@ test("slow textures loop the journey after five seconds and only arrive once rea
   h.advance(10000); await h.settle();
   assert.equal(h.controller.visual.journeyElapsedMs, 10000);
   assert.equal(h.controller.visual.journeyArrival, 0); assert.equal(h.commits.length, 0);
-  release(); await h.settle(); h.advance(1800); await h.settle();
+  release(); await h.settle(); h.advance(READING_JOURNEY_TIMING.arrivalMs); await h.settle();
   assert.equal(h.commits.length, 1);
 });
 

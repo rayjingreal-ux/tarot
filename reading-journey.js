@@ -1,36 +1,45 @@
 import * as THREE from "three";
+import { createReadingOrbSeeds, getReadingOrbPose, getReadingOrbReturnPose } from "./reading-orb-motion.js?v=20260914-03";
+import { readingArrivalEnvelope } from "./reading-journey-timing.js?v=20260914-03";
 
 const vertexShader = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const clipFragment = `uniform vec2 uClipY;
+void clipViewport() { if (uClipY.x >= 0. && (gl_FragCoord.y < uClipY.x || gl_FragCoord.y > uClipY.y)) discard; }`;
 const glowFragment = `varying vec2 vUv; uniform float uOpacity; uniform float uTime; uniform vec3 uColor;
+${clipFragment}
 void main() {
+  clipViewport();
   vec2 p = (vUv - .5) * 2.;
   float mist = exp(-dot(p,p)*4.7) * (1.-smoothstep(.4,1.,length(p)));
   float veil = .87 + .13*sin(p.x*5.+uTime*.6)*sin(p.y*4.-uTime*.4);
   gl_FragColor = vec4(uColor, mist * veil * uOpacity);
 }`;
-const backFragment = `varying vec2 vUv; uniform sampler2D uBack; uniform float uOpacity; uniform float uTime; uniform float uSeed;
+const backFragment = `varying vec2 vUv; uniform sampler2D uBack; uniform float uOpacity; uniform float uBlur; uniform vec3 uColor; uniform float uTint;
+${clipFragment}
 void main() {
-  float blur = .0025 + .003*(.5+.5*sin(uTime*.9+uSeed));
+  clipViewport();
+  float blur = uBlur;
   vec4 ink = texture2D(uBack,vUv)*.4;
   ink += texture2D(uBack,vUv+vec2(blur,0.))*.15 + texture2D(uBack,vUv-vec2(blur,0.))*.15;
   ink += texture2D(uBack,vUv+vec2(0.,blur))*.15 + texture2D(uBack,vUv-vec2(0.,blur))*.15;
   float edge = smoothstep(0.,.04,min(min(vUv.x,1.-vUv.x),min(vUv.y,1.-vUv.y)));
-  gl_FragColor = vec4(mix(ink.rgb,vec3(.85,.72,.43),.18), ink.a * edge * uOpacity);
+  gl_FragColor = vec4(mix(ink.rgb,uColor,uTint), ink.a * edge * uOpacity);
+  #include <colorspace_fragment>
 }`;
 const smooth = (n) => { const t = Math.min(1, Math.max(0, n)); return t * t * (3 - 2 * t); };
 
 // An optical forward journey inside the existing renderer. The real camera and
 // card identities never change. Only the already-loaded back texture is borrowed.
-export function createReadingJourney(scene, { reducedMotion = false } = {}) {
+export function createReadingJourney(scene, { reducedMotion = false, random = Math.random } = {}) {
   const root = new THREE.Group(), arrivals = new THREE.Group();
   root.name = "Starward reading journey";
-  arrivals.name = "Reading position heartlights";
+  arrivals.name = "Returning reading lights";
   root.visible = arrivals.visible = false;
   scene.add(root, arrivals);
   const geometry = new THREE.PlaneGeometry(1, 1);
   const materials = new Set();
   function shader(fragmentShader, uniforms, additive = true) {
-    const material = new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms,
+    const material = new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms: { ...uniforms, uClipY: { value: new THREE.Vector2(-1, -1) } },
       transparent: true, depthWrite: false, depthTest: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending, toneMapped: false });
     materials.add(material);
@@ -91,30 +100,54 @@ export function createReadingJourney(scene, { reducedMotion = false } = {}) {
   const runes = new THREE.LineSegments(runeGeometry, runeMaterial);
   runes.name = "Fleeting astral sigils"; runes.renderOrder = 501; runes.frustumCulled = false; root.add(runes);
   const runeVertices = [[0,1],[.6,0],[.6,0],[0,-1],[0,-1],[-.6,0],[-.6,0],[0,1],[0,1.5],[0,-1.5],[-1,0],[1,0]];
-  const cards = [], arrivalLights = [];
-  let disposed = false;
+  const cards = [], targets = new Map(), identity = new THREE.Quaternion();
+  let disposed = false, currentJourney = null, currentCount = 0, returning = false;
   function ensureCount(count) {
-    while (cards.length < count) {
-      const material = shader(backFragment, { uBack: { value: null }, uOpacity: { value: 0 }, uTime: { value: 0 }, uSeed: { value: cards.length * 1.71 } }, false);
+    while (cards.length < count + 1) {
+      const carrier = new THREE.Group();
+      carrier.name = `Reading light ${cards.length + 1}`;
+      carrier.userData.readingSlot = cards.length;
+      root.add(carrier);
+      const material = shader(backFragment, { uBack: { value: null }, uOpacity: { value: 0 }, uBlur: { value: .05 }, uColor: { value: new THREE.Color() }, uTint: { value: 0 } }, false);
       const card = new THREE.Mesh(geometry, material);
-      card.renderOrder = 504; card.frustumCulled = false; root.add(card);
-      cards.push({ card, light: glow(root, 0xf7d290, 503) });
+      card.name = "Mist becoming a card back";
+      card.renderOrder = 504; card.frustumCulled = false; card.visible = false; carrier.add(card);
+      cards.push({ carrier, card, light: glow(carrier, 0xffffff, 503), core: glow(carrier, 0xffffff, 505),
+        from: new THREE.Vector3(), fromQuaternion: new THREE.Quaternion(), pose: {}, seed: null,
+        size: 1, lightOpacity: 0, coreOpacity: 0 });
     }
-    while (arrivalLights.length < count + 1) arrivalLights.push(glow(arrivals, 0xffdda0, 505));
   }
-  function hide() { root.visible = arrivals.visible = false; }
-  function clearArrival() { arrivalLights.forEach((mesh) => { mesh.visible = false; }); }
-  function showArrival(slot, position, scale, strength) {
-    const mesh = arrivalLights[slot];
-    if (!mesh) return;
-    mesh.visible = strength > .001;
-    mesh.position.copy(position); mesh.position.z += .06;
-    mesh.scale.set(scale * 1.9, scale * 2.6, 1);
-    mesh.material.uniforms.uOpacity.value = strength;
+  function hide() {
+    root.visible = arrivals.visible = false;
+    currentJourney = null; returning = false; targets.clear();
   }
-  function update({ active, elapsedMs = 0, arrival = 0, spread, backTexture, camera }) {
+  // App poses use shared scratch storage; take a copy, never retain that reference.
+  function setTarget(slot, pose, clipY = null) {
+    const target = targets.get(slot) ?? {};
+    Object.assign(target, { x: pose.x, y: pose.y, z: pose.z, scale: pose.scale,
+      clipBottom: clipY?.[0] ?? -1, clipTop: clipY?.[1] ?? -1 });
+    targets.set(slot, target);
+  }
+  function begin(journeyId, count) {
+    currentJourney = journeyId; currentCount = count; returning = false;
+    const seeds = createReadingOrbSeeds(count + 1, random);
+    cards.forEach((orb, i) => {
+      root.add(orb.carrier); orb.carrier.position.set(0, 0, 0); orb.carrier.quaternion.identity();
+      orb.carrier.visible = i < count; orb.card.visible = false;
+      if (i > count) return;
+      orb.seed = seeds[i];
+      const color = new THREE.Color().setHSL(orb.seed.hue, .74, .65);
+      orb.light.material.uniforms.uColor.value.copy(color);
+      orb.card.material.uniforms.uColor.value.copy(color);
+      orb.core.material.uniforms.uColor.value.copy(color).lerp(new THREE.Color(0xffffff), .72);
+      for (const mesh of [orb.light, orb.core, orb.card]) mesh.material.uniforms.uClipY.value.set(-1, -1);
+    });
+  }
+  function update({ active, elapsedMs = 0, arrival = 0, journeyId = 0, spread, backTexture, camera }) {
     if (disposed || !active || !spread || !backTexture) { hide(); return; }
     ensureCount(spread.count);
+    const fresh = currentJourney !== journeyId || currentCount !== spread.count;
+    if (fresh) begin(journeyId, spread.count);
     root.visible = true; arrivals.visible = arrival > 0;
     root.position.copy(camera.position); root.quaternion.copy(camera.quaternion);
     const depth = Math.max(16, Math.min(48, camera.far - 4));
@@ -155,29 +188,60 @@ export function createReadingJourney(scene, { reducedMotion = false } = {}) {
       mesh.material.uniforms.uOpacity.value = entry * exit * (.18 + .025 * Math.sin(time * .55 + i));
       mesh.rotation.z = reducedMotion ? 0 : Math.sin(time * .12 + i) * .3;
     });
-    const columns = Math.min(spread.count, aspect < .85 ? 3 : 7);
-    const rows = Math.ceil(spread.count / columns);
-    const width = Math.min(7.4, 5.2 * aspect), gap = width / Math.max(2, columns);
-    const height = Math.min(1.9, gap * 1.15, 3.8 / (rows * 1.25));
-    cards.forEach(({ card, light }, i) => {
-      card.visible = light.visible = i < spread.count && exit > 0;
-      if (!card.visible) return;
-      const row = Math.floor(i / columns), rowCount = Math.min(columns, spread.count - row * columns);
-      const x = ((i % columns) - (rowCount - 1) / 2) * gap;
-      const y = ((rows - 1) / 2 - row) * height * 1.25;
-      const shimmer = reducedMotion ? .6 : .48 + Math.sin(time * 1.65 + i * .87) * .19;
-      card.position.set(x + (reducedMotion ? 0 : Math.sin(time * .74 + i) * .09), y + (reducedMotion ? 0 : Math.cos(time * .66 + i) * .10), -11 + (reducedMotion ? 0 : Math.sin(time * .85 + i * .3) * .65));
-      card.rotation.set(reducedMotion ? 0 : Math.sin(time * .7 + i) * .09, reducedMotion ? 0 : Math.cos(time * .65 + i) * .19, reducedMotion ? 0 : Math.sin(time * .52 + i) * .055);
-      card.scale.set(height * .604, height, 1);
-      card.material.uniforms.uBack.value = backTexture;
-      card.material.uniforms.uTime.value = time;
-      card.material.uniforms.uOpacity.value = entry * exit * shimmer;
-      light.position.copy(card.position); light.position.z += .01;
-      light.scale.set(height * 1.7, height * 2.1, 1);
-      light.material.uniforms.uOpacity.value = entry * exit * (shimmer * .45);
-      light.material.uniforms.uTime.value = time + i;
-    });
-    arrivalLights.forEach((mesh) => { mesh.material.uniforms.uTime.value = time; });
+    if (!returning && (arrival <= 0 || fresh)) {
+      root.updateMatrixWorld(true);
+      cards.forEach((orb, i) => {
+        if (i >= spread.count) return;
+        const pose = getReadingOrbPose(orb.seed, { elapsedMs, aspect, fov: camera.fov, reducedMotion }, orb.pose);
+        orb.carrier.position.set(pose.x, pose.y, pose.z); orb.size = pose.size;
+        orb.light.scale.setScalar(pose.size * 1.25); orb.core.scale.setScalar(pose.size * .23);
+        orb.light.material.uniforms.uOpacity.value = entry * pose.shimmer * .68;
+        orb.core.material.uniforms.uOpacity.value = entry * pose.shimmer * 1.7;
+        orb.lightOpacity = orb.light.material.uniforms.uOpacity.value;
+        orb.coreOpacity = orb.core.material.uniforms.uOpacity.value;
+        orb.light.material.uniforms.uTime.value = orb.core.material.uniforms.uTime.value = time + i;
+        // Capture the transform actually presented on this waiting frame. Do not
+        // resample the random path when loading finishes or the camera changes.
+        orb.carrier.getWorldPosition(orb.from); orb.carrier.getWorldQuaternion(orb.fromQuaternion);
+      });
+    }
+    if (arrival > 0) {
+      if (!returning) {
+        returning = true;
+        cards.forEach((orb, i) => { if (i <= spread.count) arrivals.add(orb.carrier); });
+      }
+      cards.forEach((orb, i) => {
+        const target = targets.get(i);
+        orb.carrier.visible = i <= spread.count && Boolean(target);
+        if (!orb.carrier.visible) return;
+        const envelope = readingArrivalEnvelope(arrival, i, spread.count + 1, reducedMotion);
+        const isCut = i === spread.count;
+        const { carrier, card, light, core } = orb;
+        const pose = getReadingOrbReturnPose(isCut ? target : orb.from, target, envelope.travel,
+          isCut ? { arcX: 0, arcY: 0 } : orb.seed, reducedMotion || isCut, orb.pose);
+        carrier.position.set(pose.x, pose.y, pose.z);
+        carrier.quaternion.copy(isCut ? identity : orb.fromQuaternion).slerp(identity, smooth(envelope.travel));
+        const travel = smooth(envelope.travel);
+        const glowSize = (isCut ? target.scale : orb.size * 1.25) * (1 - travel) + target.scale * 1.9 * travel;
+        light.scale.set(glowSize * (1 + envelope.unfold * .25), glowSize * (1 + envelope.unfold * .7), 1);
+        light.material.uniforms.uOpacity.value = (isCut ? envelope.unfold : orb.lightOpacity * (1 - travel) + .7 * travel) * (1 - envelope.clarify);
+        core.scale.setScalar((orb.size * .23 * (1 - travel) + target.scale * .34 * travel) * (1 - envelope.unfold));
+        core.material.uniforms.uOpacity.value = isCut ? 0 : orb.coreOpacity * (1 - envelope.unfold);
+        card.visible = envelope.unfold > 0 && envelope.local < 1;
+        card.scale.set(target.scale * .61 * envelope.unfold, target.scale * 1.01 * envelope.unfold, 1);
+        card.position.z = target.scale * .00555;
+        card.material.uniforms.uBack.value = backTexture;
+        card.material.uniforms.uOpacity.value = envelope.unfold * (1 - envelope.clarify);
+        card.material.uniforms.uBlur.value = .035 * (1 - envelope.clarify);
+        card.material.uniforms.uTint.value = .24 * (1 - envelope.clarify);
+        for (const mesh of [card, light, core]) {
+          // Main cards share the final mobile viewport; the separate cut is not
+          // clipped. Travelling points stay free until they reach their slots.
+          mesh.material.uniforms.uClipY.value.set(envelope.travel >= 1 ? target.clipBottom : -1, target.clipTop);
+          if (mesh !== card) mesh.material.uniforms.uTime.value = time + i;
+        }
+      });
+    }
   }
   function dispose() {
     if (disposed) return;
@@ -186,5 +250,5 @@ export function createReadingJourney(scene, { reducedMotion = false } = {}) {
     materials.forEach((material) => material.dispose());
     root.clear(); arrivals.clear(); // The shared deck back texture is not owned.
   }
-  return { update, hide, clearArrival, showArrival, dispose };
+  return { update, hide, setTarget, dispose, arrivalLayer: arrivals };
 }

@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createDrawRitual } from "./draw-ritual.js?v=20260914-02";
+import { createDrawRitual } from "./draw-ritual.js?v=20260914-03";
 import { markDrawRevealed, availableDrawPositions } from "./draw-session.js?v=20260913-01";
 import { createRitualEffects } from "./ritual-effects.js?v=20260913-06";
-import { createReadingJourney } from "./reading-journey.js?v=20260914-02";
-import { readingArrivalEnvelope } from "./reading-journey-timing.js?v=20260914-02";
+import { createReadingJourney } from "./reading-journey.js?v=20260914-03";
+import { readingArrivalEnvelope } from "./reading-journey-timing.js?v=20260914-03";
 import { getRitualCardPose } from "./ritual-layout.js?v=20260913-06";
 import { getDrawSpread, getReadingCardPose } from "./draw-spreads.js?v=20260913-01";
 import { createDeckTexturePlan, createDeckTextureCache, getTextureUrl } from "./texture-loading.js?v=20260913-02";
@@ -13,7 +13,7 @@ import { getCardDisplayName } from "./card-names.js?v=20260913-04";
 import { createRingSelection } from "./ring-selection.js?v=20260913-05";
 import { getCardFlipPose } from "./card-flip.js?v=20260913-05";
 import { createReadingExportModel, renderReadingExport, readingExportBlob } from "./reading-export.js?v=20260914-02";
-import { createReadingImageShare } from "./reading-share.js?v=20260914-02";
+import { createReadingImageShare } from "./reading-share.js?v=20260914-03";
 import { calculateDeckCarouselCameraFit } from "./deck-carousel-fit.js?v=20260913-06";
 
 
@@ -4337,7 +4337,6 @@ function updateRitualCards(dt, time) {
   const state = drawRitual.visual;
   const session = drawRitual.session;
   if (!session) return;
-  readingJourney.clearArrival();
   if (state.phase === "revealing") {
     if (state.journeyActive && state.journeyArrival > 0) {
       // Measure the final (still hidden and inert) result before emergence. This
@@ -4360,6 +4359,11 @@ function updateRitualCards(dt, time) {
       const rect = cut ? readingScreenLayout.cut : readingScreenLayout.cards[slot];
       const offset = readingScreenLayout.scrollable && !cut ? readingScrollOffset : 0;
       const pose = readingScreenCardPose(rect, offset);
+      const clipY = !cut && readingScreenLayout.scrollable ? [
+        (stage.clientHeight - readingScreenLayout.bottom) * renderer.getPixelRatio(),
+        (stage.clientHeight - readingScreenLayout.top) * renderer.getPixelRatio(),
+      ] : null;
+      readingJourney.setTarget(order, pose, clipY);
       card.visible = light.visible;
       card.position.set(pose.x, pose.y, pose.z - light.depth);
       card.rotation.set(0, Math.PI, 0);
@@ -4368,8 +4372,6 @@ function updateRitualCards(dt, time) {
         material.uniforms.uSweep.value = .1 + state.journeyArrival;
         material.uniforms.uOpacity.value = .5 + light.glow;
       });
-      const inView = cut || !readingScreenLayout.scrollable || (rect.y - offset - rect.height / 2 >= readingScreenLayout.top && rect.y - offset + rect.height / 2 <= readingScreenLayout.bottom);
-      if (inView) readingJourney.showArrival(order, card.position, pose.scale, light.glow);
     }
     return;
   }
@@ -4734,8 +4736,11 @@ function renderStageScene() {
   const cutVisible = cut?.visible;
   const decorations = scene.children.filter((object) => object !== cardsGroup && !object.isLight);
   const decorationVisibility = decorations.map((object) => object.visible);
+  const arrivalOverlay = arrivingScrollable ? readingJourney.arrivalLayer : null;
+  const showArrivalOverlay = arrivalOverlay?.visible;
   const autoClear = renderer.autoClear;
   try {
+    if (arrivalOverlay) arrivalOverlay.visible = false;
     mainCards.forEach((card) => { card.visible = false; });
     renderer.render(scene, camera);
     mainCards.forEach((card, index) => { card.visible = originalMainVisibility[index]; });
@@ -4747,6 +4752,15 @@ function renderStageScene() {
     renderer.setScissorTest(true);
     renderer.clearDepth();
     renderer.render(scene, camera);
+    if (showArrivalOverlay) {
+      // The mist must blend OVER both the pinned cut and clipped main cards.
+      // Its own pixel-space clipping keeps settled backs inside their viewport.
+      mainCards.forEach((card) => { card.visible = false; });
+      arrivalOverlay.visible = true;
+      renderer.setScissorTest(false);
+      renderer.clearDepth();
+      renderer.render(scene, camera);
+    }
   } finally {
     mainCards.forEach((card, index) => { card.visible = originalMainVisibility[index]; });
     if (cut) cut.visible = cutVisible;
@@ -4838,6 +4852,7 @@ function animate(now) {
   ritualEffects.update(dt, time);
   readingJourney.update({ active: Boolean(drawRitual?.isOpen && drawRitual.visual.journeyActive),
     elapsedMs: drawRitual?.visual.journeyElapsedMs, arrival: drawRitual?.visual.journeyArrival,
+    journeyId: drawRitual?.visual.journeyId,
     spread: drawRitual?.session ? getDrawSpread(drawRitual.session.spreadId) : null,
     backTexture: textures[`${activeDeckKey}:${DECKS[activeDeckKey].cardBack}`], camera });
   updateCameraTween(now);

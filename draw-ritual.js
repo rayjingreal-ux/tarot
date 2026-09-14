@@ -1,7 +1,7 @@
 import { createDrawSession, pickDrawCard, autoPickDrawCard, cutDrawDeck, availableDrawPositions } from "./draw-session.js?v=20260913-01";
 import { DRAW_SPREADS, getDrawSpread } from "./draw-spreads.js?v=20260913-01";
 import { SHUFFLE_TIMING, getShuffleEnvelope } from "./ritual-layout.js?v=20260913-06";
-import { createReadingJourneyGate } from "./reading-journey-timing.js?v=20260914-02";
+import { createReadingJourneyGate } from "./reading-journey-timing.js?v=20260914-03";
 
 // Transparent stage HUD; the adapter animates and picks real cards in the existing Three.js scene.
 export function createDrawRitual(adapter) {
@@ -245,15 +245,15 @@ export function createDrawRitual(adapter) {
     pending = true;
     clearError();
     stopJourney();
-    Object.assign(visual, { journeyActive: true, journeyElapsedMs: 0, journeyArrival: 0 });
+    Object.assign(visual, { journeyActive: true, journeyElapsedMs: 0, journeyArrival: 0, journeyId: (visual.journeyId ?? 0) + 1 });
     title.textContent = "循著星光，追尋回應";
-    status.textContent = `${chosenSession.drawCount} 張牌，正在星霧深處等待你…`;
+    status.textContent = `${chosenSession.drawCount} 道光，在星霧之間交會…`;
     const gate = createReadingJourneyGate({ onFrame({ elapsedMs, arrival }) {
       visual.journeyElapsedMs = elapsedMs;
       visual.journeyArrival = arrival;
       if (arrival > 0 && title.textContent !== "讓光芒，落入牌位") {
         title.textContent = "讓光芒，落入牌位";
-        status.textContent = "牌背正在各自的位置浮現，等待你親手翻開。";
+        status.textContent = "循著最後的光跡，各自歸位，凝成牌背。";
       }
     } });
     journeyGate = gate;
