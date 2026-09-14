@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createDrawRitual } from "../draw-ritual.js";
 import { DRAW_SPREADS } from "../draw-spreads.js";
 import { SHUFFLE_TIMING } from "../ritual-layout.js";
+import { READING_JOURNEY_TIMING } from "../reading-journey-timing.js";
 
 // Minimal event/element doubles exercise the real controller, without a browser or
 // production dependencies. These are state-machine tests, not visual-layout QA.
@@ -65,6 +66,11 @@ function harness(t, { method = "manual", prepareSelection = async () => {}, pref
     commitSelection: (index, session) => commits.push({ index, session }),
   });
   async function settle() { for (let i = 0; i < 12; i++) await Promise.resolve(); }
+  async function finishDelivery() {
+    await settle();
+    advance(READING_JOURNEY_TIMING.minimumMs + READING_JOURNEY_TIMING.arrivalMs + 32);
+    await settle();
+  }
   function stall(milliseconds) { now += milliseconds; const queued = [...frames.values()]; frames.clear(); queued.forEach((callback) => callback(now)); }
   function advance(milliseconds) {
     const end = now + milliseconds;
@@ -86,7 +92,7 @@ function harness(t, { method = "manual", prepareSelection = async () => {}, pref
     if (cut) get("draw-collect").fire("click");
     assert.equal(controller.session.phase, cut ? "cutting" : "shuffling");
   }
-  return { controller, get, commits, preparations, prefetches, orders, begin, start, settle, advance, stall, get cancelled() { return cancelled; } };
+  return { controller, get, commits, preparations, prefetches, orders, begin, start, settle, finishDelivery, advance, stall, get cancelled() { return cancelled; } };
 }
 
 test("only confirmed cut and newly selected faces are prefetched, never the full ring", async (t) => {
@@ -98,7 +104,7 @@ test("only confirmed cut and newly selected faces are prefetched, never the full
   assert.equal(h.prefetches.length, 1, "previewing a back does not download its face");
   h.controller.choose(12); await h.settle();
   assert.deepEqual(h.prefetches[1].indices, [h.controller.session.draws[0].index]);
-  h.controller.choose(); await h.settle();
+  h.controller.choose(); await h.finishDelivery();
   assert.equal(h.commits.length, 1, "prefetch errors do not prevent authoritative delivery");
   assert.equal(h.prefetches.flatMap((item) => item.indices).length, 4);
   assert.equal(new Set(h.prefetches.flatMap((item) => item.indices)).size, 4);
@@ -116,7 +122,7 @@ test("double-clicking the centre preview does not accidentally draw the next car
   assert.equal(h.controller.session.draws.length, 1);
   h.advance(350); h.controller.choose(13);
   assert.equal(h.controller.session.draws.length, 2);
-  h.controller.choose(); await h.settle();
+  h.controller.choose(); await h.finishDelivery();
   assert.equal(h.commits.length, 1, "explicit auto-fill remains available during tap cooldown");
 });
 
@@ -134,7 +140,7 @@ test("controller completes all fourteen layouts only after cut plus the selected
     h.advance(500);
     h.controller.choose(4);
     if (spread.count > 1) h.controller.choose();
-    await h.settle();
+    await h.finishDelivery();
     const delivered = h.commits.at(-1).session;
     assert.equal(delivered.draws.length, spread.count);
     assert.equal(new Set(h.preparations.at(-1).indices).size, spread.count + 1);
@@ -148,7 +154,7 @@ test("starlight waits for a cut, then fills the spread without exposing card ide
   const h = harness(t, { method: "starlight" }); await h.start("houses");
   assert.equal(h.commits.length, 0);
   assert.ok(h.get("draw-card-track").children.every((button) => !button["aria-label"].includes("card-")));
-  h.controller.choose(30); await h.settle();
+  h.controller.choose(30); await h.finishDelivery();
   assert.equal(h.commits[0].session.draws.length, 13);
   assert.equal(h.preparations[0].indices.length, 14);
   assert.ok([...h.commits[0].session.draws, h.commits[0].session.cut].every((entry) => !entry.faceUp && !entry.revealed));
@@ -160,7 +166,7 @@ test("delivery retry retains the same cut, chosen order and orientations, with o
   await h.start(); h.controller.choose(10); h.advance(500); h.controller.choose(); await h.settle();
   const selected = h.controller.session, snapshot = JSON.stringify([selected.draws, selected.cut]);
   assert.equal(h.get("draw-error").hidden, false); assert.equal(h.commits.length, 0);
-  h.get("draw-retry").fire("click"); h.get("draw-retry").fire("click"); await h.settle();
+  h.get("draw-retry").fire("click"); h.get("draw-retry").fire("click"); await h.finishDelivery();
   assert.equal(attempts, 2); assert.equal(h.commits.length, 1);
   assert.equal(h.commits[0].session, selected);
   assert.equal(JSON.stringify([selected.draws, selected.cut]), snapshot);
@@ -233,7 +239,7 @@ test("fate can also repeat and suspends timed progress when the document is hidd
   h.get("draw-hold").fire("click"); h.advance(SHUFFLE_TIMING.durationMs + 100);
   assert.notEqual(h.controller.session, before);
   assert.equal(h.controller.session.cut, null);
-  h.get("draw-collect").fire("click"); h.controller.choose(8); await h.settle();
+  h.get("draw-collect").fire("click"); h.controller.choose(8); await h.finishDelivery();
   assert.equal(h.commits.length, 1); assert.equal(h.commits[0].session.draws.length, 1);
 });
 
@@ -274,7 +280,7 @@ test("optional question survives repeat shuffling, cutting and delivery for both
     h.get("draw-collect").fire("click");
     h.controller.choose(7);
     if (method === "manual") { h.advance(500); h.controller.choose(); }
-    await h.settle();
+    await h.finishDelivery();
     assert.equal(h.commits.length, 1);
     assert.equal(h.commits[0].session.question, question);
     assert.equal(h.commits[0].session.draws.length, 3);
@@ -322,7 +328,7 @@ test("delivery retry preserves the question and a cancelled preparation cannot l
   h.get("draw-collect").fire("click"); h.controller.choose(0); h.advance(500); h.controller.choose();
   await h.settle();
   const session = h.controller.session;
-  h.get("draw-retry").fire("click"); await h.settle();
+  h.get("draw-retry").fire("click"); await h.finishDelivery();
   assert.equal(h.commits[0].session, session);
   assert.equal(h.commits[0].session.question, "留存這次的問題");
   h.controller.open(); h.get("draw-question").value = "cancelled draft";
@@ -340,4 +346,46 @@ test("typing line breaks or cancelling IME composition never starts or cancels a
   assert.equal(h.controller.isOpen, true);
   assert.equal(h.controller.session, null);
   assert.equal(h.cancelled, 0);
+});
+
+test("a fast load still waits five visible seconds before backs materialize, with no early commit", async (t) => {
+  const h = harness(t); await h.start("free-7"); h.controller.choose(9);
+  assert.notEqual(h.controller.visual.journeyActive, true, "manual cutting still leads to choosing, not a forced draw");
+  h.advance(400); h.controller.choose(); await h.settle();
+  const session = h.controller.session, original = JSON.stringify([session.draws, session.cut]);
+  assert.equal(session.draws.length, 7); assert.equal(h.preparations[0].indices.length, 8);
+  assert.equal(h.controller.visual.journeyActive, true);
+  h.advance(4999); await h.settle();
+  assert.equal(h.controller.visual.journeyArrival, 0); assert.equal(h.commits.length, 0);
+  h.advance(200); assert.ok(h.controller.visual.journeyArrival > 0);
+  assert.equal(h.commits.length, 0, "the luminous arrival has its own time");
+  h.advance(1800); await h.settle();
+  assert.equal(h.commits.length, 1); assert.equal(h.commits[0].session, session);
+  assert.equal(JSON.stringify([session.draws, session.cut]), original);
+  assert.equal(h.controller.visual.journeyActive, false);
+});
+
+test("slow textures loop the journey after five seconds and only arrive once ready", async (t) => {
+  let release;
+  const h = harness(t, { method: "starlight", prepareSelection: () => new Promise((resolve) => { release = resolve; }) });
+  await h.start("free-7"); h.controller.choose(1); await h.settle();
+  h.advance(10000); await h.settle();
+  assert.equal(h.controller.visual.journeyElapsedMs, 10000);
+  assert.equal(h.controller.visual.journeyArrival, 0); assert.equal(h.commits.length, 0);
+  release(); await h.settle(); h.advance(1800); await h.settle();
+  assert.equal(h.commits.length, 1);
+});
+
+test("hidden time and stalled frames cannot skip pursuit; cancelling during arrival cannot commit", async (t) => {
+  const h = harness(t, { method: "starlight" }); await h.start("single"); h.controller.choose(1); await h.settle();
+  h.advance(1000);
+  document.hidden = true; document.fire("visibilitychange"); h.advance(20000);
+  document.hidden = false; document.fire("visibilitychange");
+  assert.equal(h.controller.visual.journeyElapsedMs, 1000);
+  h.stall(10000); assert.equal(h.controller.visual.journeyElapsedMs, 1100);
+  h.advance(4500); assert.ok(h.controller.visual.journeyArrival > 0);
+  h.controller.cancel(); h.advance(10000); await h.settle();
+  assert.equal(h.commits.length, 0); assert.equal(h.controller.visual.journeyActive, false);
+  await h.start("free-2"); assert.equal(h.controller.session.drawCount, 2);
+  h.controller.cancel();
 });

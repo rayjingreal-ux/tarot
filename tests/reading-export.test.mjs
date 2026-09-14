@@ -77,7 +77,7 @@ test("all fourteen exports keep every question character below main cards and cu
         const layout = layoutReadingExport({ model, spread, width });
         const block = layout.question;
         assert.ok(layout.height <= 4096, `${spread.id}: ${layout.height}`);
-        assert.equal(block.title, "當時的問題");
+        assert.equal(block.title, "銘記於心的念想");
         const cutBottom = layout.cut.y + layout.cut.height / 2 + 12
           + layout.cut.bottomLines.length * 38 + 30;
         assert.ok(block.y > cutBottom && block.y > layout.mainBottom);
@@ -144,7 +144,7 @@ test("render includes the complete question as plain image text after every card
   const questionText = text.filter((line) => line.y >= layout.question.columns[0].y);
   assert.equal(questionText.map((line) => line.value).join(""), model.question.replaceAll("\n", ""));
   assert.ok(questionText.every((line) => line.drawnCards === 14));
-  assert.ok(text.some((line) => line.value === "當時的問題" && line.y === layout.question.titleY));
+  assert.ok(text.some((line) => line.value === "銘記於心的念想" && line.y === layout.question.titleY));
   assert.equal(canvas.height, layout.height);
 });
 

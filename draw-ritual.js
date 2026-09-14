@@ -1,6 +1,7 @@
 import { createDrawSession, pickDrawCard, autoPickDrawCard, cutDrawDeck, availableDrawPositions } from "./draw-session.js?v=20260913-01";
 import { DRAW_SPREADS, getDrawSpread } from "./draw-spreads.js?v=20260913-01";
 import { SHUFFLE_TIMING, getShuffleEnvelope } from "./ritual-layout.js?v=20260913-06";
+import { createReadingJourneyGate } from "./reading-journey-timing.js?v=20260914-02";
 
 // Transparent stage HUD; the adapter animates and picks real cards in the existing Three.js scene.
 export function createDrawRitual(adapter) {
@@ -15,7 +16,6 @@ export function createDrawRitual(adapter) {
   const progressLabel = find("draw-progress-label");
   const error = find("draw-error");
   const retry = find("draw-retry");
-  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   const spreadOptions = find("draw-spread-options");
   const question = find("draw-question");
   const questionCount = find("draw-question-count");
@@ -78,6 +78,13 @@ export function createDrawRitual(adapter) {
   let drag = null;
   let suppressClickUntil = 0;
   let chooseReadyAt = 0;
+  let journeyGate = null;
+
+  function stopJourney() {
+    journeyGate?.cancel();
+    journeyGate = null;
+    visual.journeyActive = false;
+  }
 
   function phase(value, heading, instruction) {
     visual.phase = value;
@@ -200,6 +207,7 @@ export function createDrawRitual(adapter) {
 
   function closeSurface() {
     stopHold();
+    stopJourney();
     surface.hidden = true;
     surface.setAttribute("aria-hidden", "true");
     surface.inert = true;
@@ -236,7 +244,19 @@ export function createDrawRitual(adapter) {
     const chosenSession = session;
     pending = true;
     clearError();
-    status.textContent = "主牌已選齊，正在展開牌陣與切牌…";
+    stopJourney();
+    Object.assign(visual, { journeyActive: true, journeyElapsedMs: 0, journeyArrival: 0 });
+    title.textContent = "循著星光，追尋回應";
+    status.textContent = `${chosenSession.drawCount} 張牌，正在星霧深處等待你…`;
+    const gate = createReadingJourneyGate({ onFrame({ elapsedMs, arrival }) {
+      visual.journeyElapsedMs = elapsedMs;
+      visual.journeyArrival = arrival;
+      if (arrival > 0 && title.textContent !== "讓光芒，落入牌位") {
+        title.textContent = "讓光芒，落入牌位";
+        status.textContent = "牌背正在各自的位置浮現，等待你親手翻開。";
+      }
+    } });
+    journeyGate = gate;
     surface.setAttribute("aria-busy", "true");
     find("draw-auto-pick").disabled = true;
     find("draw-selection-count").textContent = `${session.draws.length} / ${session.drawCount} · 已選定`;
@@ -249,11 +269,11 @@ export function createDrawRitual(adapter) {
     slot.classList.add("is-filled");
     track.querySelectorAll(".draw-choice").forEach((button) => { button.disabled = true; });
     try {
-      await adapter.prepareSelection([...chosenSession.draws, chosenSession.cut].filter(Boolean).map((entry) => entry.index), chosenSession);
-      if (token !== generation || surface.hidden) return;
-      const remaining = reducedMotion.matches ? 0 : Math.max(0, 1150 - (performance.now() - visual.phaseStartedAt));
-      if (remaining) await new Promise((resolve) => setTimeout(resolve, remaining));
-      if (token !== generation || surface.hidden) return;
+      const [, completed] = await Promise.all([
+        adapter.prepareSelection([...chosenSession.draws, chosenSession.cut].filter(Boolean).map((entry) => entry.index), chosenSession).then(() => gate.ready()),
+        gate.finished,
+      ]);
+      if (!completed || token !== generation || surface.hidden) return;
       adapter.commitSelection(chosenSession.selectedIndex, chosenSession);
       pending = false;
       surface.removeAttribute("aria-busy");
@@ -261,6 +281,7 @@ export function createDrawRitual(adapter) {
       adapter.focusResult();
     } catch {
       if (token !== generation || surface.hidden) return;
+      stopJourney();
       showError("部分牌面暫時無法載入。重試會保留這次切牌、抽牌與正逆位，不重新抽取。", deliverSelection);
     }
   }
@@ -478,6 +499,7 @@ export function createDrawRitual(adapter) {
     } else if (event.detail === 0) { playToEnd = true; startHold(true); }
   });
   document.addEventListener("visibilitychange", () => {
+    journeyGate?.resetFrameTime();
     if (document.hidden) stopHold();
     else if (playToEnd && visual.phase === "shuffling" && heldMs < shuffleDuration) startHold(true);
   });

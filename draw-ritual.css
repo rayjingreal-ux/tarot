@@ -295,6 +295,9 @@
   transform: translateY(10px);
 }
 
+/* The hidden result must measure exactly like its final state while backs arrive. */
+.inspection[data-ritual-phase="revealing"] #card-controls { transform: none; transition: none; }
+
 #draw-ritual {
   position: absolute;
   z-index: 4;

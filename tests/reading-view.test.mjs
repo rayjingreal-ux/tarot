@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readingArrivalEnvelope } from "../reading-journey-timing.js";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { DRAW_SPREADS, getDrawSpread } from "../draw-spreads.js";
@@ -180,7 +181,7 @@ test("scrollable mobile results still rotate through an edge-on frame before rev
   const flips = new Map([[0, { result, entry, from: Math.PI, to: 0, startedAt: 0, delay: 0, duration: 720 }]]);
   let refreshes = 0;
   const bounds = { left: 0, top: 0, width: 390, height: 700 };
-  const state = bind(["updateReadingCards"], {
+  const state = bind(["updateReadingCards", "readingScreenCardPose"], {
     THREE, getCardFlipPose, readingResult: result, readingFlips: flips, readingFlipPose: {},
     readingLayoutDirty: false, readingScreenLayout: { scrollable: true, cards: [{ x: 100, y: 200, width: 61, height: 101 }], labelGap: 8, top: 100, bottom: 500 },
     readingEntries: () => [entry], cardMeshes: [card], readingScrollOffset: 0,
@@ -206,6 +207,40 @@ test("scrollable mobile results still rotate through an edge-on frame before rev
   state.updateReadingCards(1 / 60, 1.5);
   assert.equal(flips.size, 0, "offscreen cards finish flipping so detail view can export all cards");
   assert.equal(hiddenCard.visible, false); assert.equal(hiddenCard.rotation.y, 0);
+});
+
+test("arrival uses final measured card positions, remains face down and never shows unselected cards", () => {
+  const session = { drawCount: 2, selectedIndex: 0, draws: [{ index: 0 }, { index: 1 }], cut: { index: 2 } };
+  const visual = { phase: "revealing", journeyActive: true, journeyArrival: 0 };
+  const cards = [0, 1, 2, 3].map((index) => {
+    const card = new THREE.Group(); Object.assign(card.userData, { cardIndex: index, reflectionMaterials: [] }); return card;
+  });
+  let measurements = 0;
+  const rects = [{ x: 100, y: 180, height: 101 }, { x: 200, y: 180, height: 101 }, { x: 30, y: 510, height: 60 }];
+  const state = bind(["updateRitualCards", "readingScreenCardPose"], {
+    THREE, readingArrivalEnvelope, drawRitual: { visual, session }, readingResult: null,
+    readingJourney: { clearArrival() {}, showArrival() {} }, cardMeshes: cards,
+    readingLayoutDirty: true, readingScreenLayout: null, readingScrollOffset: 0,
+    readingLabelPoint: new THREE.Vector3(), readingProjectionPoint: new THREE.Vector3(), ritualPose: {},
+    screenToReadingPlane: (x, y, target) => target.set(x / 100, -y / 100, 1.05),
+    deckCarouselReducedMotion: { matches: false }, updateReadingResult() {},
+    measureReadingLayout() {
+      measurements++; state.readingLayoutDirty = false;
+      state.readingScreenLayout = { cards: rects.slice(0, 2), cut: rects[2], scrollable: false };
+    },
+  });
+  state.updateRitualCards(1 / 60, 2);
+  assert.ok(cards.every((card) => !card.visible)); assert.equal(measurements, 0);
+  visual.journeyArrival = .5; state.updateRitualCards(1 / 60, 5.9);
+  assert.equal(state.readingResult.session, session); assert.equal(measurements, 1);
+  visual.journeyArrival = 1; state.updateRitualCards(1 / 60, 6.8);
+  cards.slice(0, 3).forEach((card, i) => {
+    const target = state.readingScreenCardPose(rects[i]);
+    assert.equal(card.position.x, target.x); assert.equal(card.position.y, target.y);
+    assert.equal(card.position.z, target.z); assert.equal(card.scale.x, target.scale);
+    assert.equal(card.rotation.y, Math.PI);
+  });
+  assert.equal(cards[3].visible, false);
 });
 
 test("result markup removes the bottom numeric/cut strip and binds background return", () => {
@@ -244,7 +279,7 @@ test("scroll rendering clips only main cards and always restores scene state", (
       setScissor(...values) { scissors.push(values); },
       setScissorTest(value) { this.scissorTest = value; }, clearDepth() {},
     };
-    const state = bind(["renderStageScene"], { renderer, isReadingScrollable: () => true,
+    const state = bind(["renderStageScene"], { renderer, isReadingScrollable: () => true, drawRitual: null,
       scene: { children: [group, decoration, hiddenBox, light] }, camera: {}, cardsGroup: group, cardMeshes: [main, cut],
       stage: { clientWidth: 390, clientHeight: 619 }, readingScreenLayout: { top: 110, bottom: 420 },
       readingResult: { session: { draws: [{ index: 0 }], cut: { index: 1 } } },

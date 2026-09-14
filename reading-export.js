@@ -42,7 +42,7 @@ function layoutQuestionExport({ text, width, contentBottom, measure }) {
       x: x + inset + index * (columnWidth + columnGap), y: textY, width: columnWidth,
       lines: lines.slice(index * rows, (index + 1) * rows),
     })).filter((column) => column.lines.length);
-    return { title: "當時的問題", x, y, width: boxWidth, height, titleY,
+    return { title: "銘記於心的念想", x, y, width: boxWidth, height, titleY,
       fontSize, lineHeight, columns };
   }
   throw new RangeError("問題文字過長，無法在安全圖片尺寸內輸出。");

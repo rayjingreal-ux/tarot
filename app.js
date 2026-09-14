@@ -1,8 +1,10 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createDrawRitual } from "./draw-ritual.js?v=20260914-01";
+import { createDrawRitual } from "./draw-ritual.js?v=20260914-02";
 import { markDrawRevealed, availableDrawPositions } from "./draw-session.js?v=20260913-01";
 import { createRitualEffects } from "./ritual-effects.js?v=20260913-06";
+import { createReadingJourney } from "./reading-journey.js?v=20260914-02";
+import { readingArrivalEnvelope } from "./reading-journey-timing.js?v=20260914-02";
 import { getRitualCardPose } from "./ritual-layout.js?v=20260913-06";
 import { getDrawSpread, getReadingCardPose } from "./draw-spreads.js?v=20260913-01";
 import { createDeckTexturePlan, createDeckTextureCache, getTextureUrl } from "./texture-loading.js?v=20260913-02";
@@ -10,8 +12,8 @@ import { fitReadingLayout, readingNameWidth, readingLayoutMetrics } from "./read
 import { getCardDisplayName } from "./card-names.js?v=20260913-04";
 import { createRingSelection } from "./ring-selection.js?v=20260913-05";
 import { getCardFlipPose } from "./card-flip.js?v=20260913-05";
-import { createReadingExportModel, renderReadingExport, readingExportBlob } from "./reading-export.js?v=20260914-01";
-import { createReadingImageShare } from "./reading-share.js?v=20260914-01";
+import { createReadingExportModel, renderReadingExport, readingExportBlob } from "./reading-export.js?v=20260914-02";
+import { createReadingImageShare } from "./reading-share.js?v=20260914-02";
 import { calculateDeckCarouselCameraFit } from "./deck-carousel-fit.js?v=20260913-06";
 
 
@@ -2068,6 +2070,7 @@ function initializeDrawRitual() {
         cardMeshes.forEach((card) => { card.visible = !readingResult || readingEntries().some((entry) => entry.index === card.userData.cardIndex); card.rotation.x = 0; });
         renderer.domElement.style.cursor = "grab";
         ritualEffects.setState({ phase: "idle" });
+        readingJourney.hide();
       }
     },
     loadDeck: ensureDeckCardExperience,
@@ -2312,6 +2315,7 @@ function playInvocationSound() {
 
 const scene = new THREE.Scene();
 const ritualEffects = createRitualEffects(scene, { reducedMotion: deckCarouselReducedMotion.matches });
+const readingJourney = createReadingJourney(scene, { reducedMotion: deckCarouselReducedMotion.matches });
 const camera = new THREE.PerspectiveCamera(32, 1, 0.05, 30);
 camera.position.set(0.32, 0.18, 4.55);
 
@@ -4332,6 +4336,43 @@ function updateCards(dt, time) {
 function updateRitualCards(dt, time) {
   const state = drawRitual.visual;
   const session = drawRitual.session;
+  if (!session) return;
+  readingJourney.clearArrival();
+  if (state.phase === "revealing") {
+    if (state.journeyActive && state.journeyArrival > 0) {
+      // Measure the final (still hidden and inert) result before emergence. This
+      // uses the same phone/long-question layout and prevents a jump at handoff.
+      if (readingResult?.session !== session) {
+        readingResult = { index: session.selectedIndex, session, detail: null };
+        updateReadingResult();
+      }
+      if (readingLayoutDirty || !readingScreenLayout) measureReadingLayout();
+    }
+    // No unselected cards or cut card appear in the distant pursuit. Materialize
+    // the confirmed backs in their own spread positions only after both gates.
+    for (const card of cardMeshes) {
+      const cut = session.cut?.index === card.userData.cardIndex;
+      const slot = session.draws.findIndex((entry) => entry.index === card.userData.cardIndex);
+      card.visible = false;
+      if (!state.journeyActive || state.journeyArrival <= 0 || (!cut && slot < 0)) continue;
+      const order = cut ? session.drawCount : slot;
+      const light = readingArrivalEnvelope(state.journeyArrival, order, session.drawCount + 1, deckCarouselReducedMotion.matches);
+      const rect = cut ? readingScreenLayout.cut : readingScreenLayout.cards[slot];
+      const offset = readingScreenLayout.scrollable && !cut ? readingScrollOffset : 0;
+      const pose = readingScreenCardPose(rect, offset);
+      card.visible = light.visible;
+      card.position.set(pose.x, pose.y, pose.z - light.depth);
+      card.rotation.set(0, Math.PI, 0);
+      card.scale.setScalar(pose.scale * light.scale);
+      card.userData.reflectionMaterials.forEach((material) => {
+        material.uniforms.uSweep.value = .1 + state.journeyArrival;
+        material.uniforms.uOpacity.value = .5 + light.glow;
+      });
+      const inView = cut || !readingScreenLayout.scrollable || (rect.y - offset - rect.height / 2 >= readingScreenLayout.top && rect.y - offset + rect.height / 2 <= readingScreenLayout.bottom);
+      if (inView) readingJourney.showArrival(order, card.position, pose.scale, light.glow);
+    }
+    return;
+  }
   if (state.phase === "selecting" && ringSelection) { updateRingSelecting(dt, time); return; }
   const spread = getDrawSpread(session.spreadId);
   ritualMotion.energy = THREE.MathUtils.damp(ritualMotion.energy, state.holding ? 1 : 0.05, 3.5, dt);
@@ -4339,7 +4380,7 @@ function updateRitualCards(dt, time) {
   ritualMotion.focus = THREE.MathUtils.damp(ritualMotion.focus, state.focus, 9, dt);
   Object.assign(ritualPoseOptions, {
     phase: state.phase === "cutting" ? "selecting" : state.phase, count: session.order.length, time: ritualMotion.clock,
-    energy: ritualMotion.energy, progress: state.phase === "shuffling" ? state.progress : (performance.now() - state.phaseStartedAt) / 1150,
+    energy: ritualMotion.energy, progress: state.progress,
     focus: ritualMotion.focus, selectedPosition: state.selectedPosition, aspect: camera.aspect,
     reducedMotion: deckCarouselReducedMotion.matches,
   });
@@ -4483,6 +4524,13 @@ function screenToReadingPlane(x, y, target) {
   return target;
 }
 
+function readingScreenCardPose(rect, offset = 0) {
+  screenToReadingPlane(rect.x, rect.y - offset, readingLabelPoint);
+  screenToReadingPlane(rect.x, rect.y - offset - rect.height / 2, readingProjectionPoint);
+  return Object.assign(ritualPose, { x: readingLabelPoint.x, y: readingLabelPoint.y, z: 1.05,
+    scale: Math.abs(readingProjectionPoint.y - readingLabelPoint.y) / 0.505 });
+}
+
 function updateReadingCards(dt, time) {
   const { session, detail } = readingResult;
   if (readingLayoutDirty || !readingScreenLayout) measureReadingLayout();
@@ -4503,10 +4551,8 @@ function updateReadingCards(dt, time) {
     const slot = session.draws.indexOf(entry);
     const rect = detail !== null ? readingScreenLayout.detail : cut ? readingScreenLayout.cut : readingScreenLayout.cards[slot];
     const offset = readingScreenLayout.scrollable && !cut ? readingScrollOffset : 0;
-    screenToReadingPlane(rect.x, rect.y - offset, readingLabelPoint);
-    screenToReadingPlane(rect.x, rect.y - offset - rect.height / 2, readingProjectionPoint);
-    Object.assign(ritualPose, { x: readingLabelPoint.x, y: readingLabelPoint.y, z: 1.05,
-      scale: Math.abs(readingProjectionPoint.y - readingLabelPoint.y) / 0.505, ry: entry.faceUp ? 0 : Math.PI });
+    readingScreenCardPose(rect, offset);
+    ritualPose.ry = entry.faceUp ? 0 : Math.PI;
     const speed = deckCarouselReducedMotion.matches || readingScreenLayout.scrollable ? 1000 : 9;
     card.position.x = THREE.MathUtils.damp(card.position.x, ritualPose.x, speed, dt);
     card.position.y = THREE.MathUtils.damp(card.position.y, ritualPose.y, speed, dt);
@@ -4676,7 +4722,9 @@ function moveAtOneSecond(current, target, dt) {
 }
 
 function renderStageScene() {
-  if (!isReadingScrollable()) { renderer.render(scene, camera); return; }
+  const arrivingScrollable = drawRitual?.isOpen && drawRitual.visual.journeyArrival > 0
+    && readingResult?.session === drawRitual.session && readingScreenLayout?.scrollable;
+  if (!isReadingScrollable() && !arrivingScrollable) { renderer.render(scene, camera); return; }
   // Render the pinned cut/background normally, then clip only the scrollable
   // main cards. This keeps the existing meshes, materials, lighting and camera.
   const mainIndices = new Set(readingResult.session.draws.map((entry) => entry.index));
@@ -4785,10 +4833,13 @@ function animate(now) {
   updateCasting(dt);
   if (drawRitual?.isOpen) {
     const visual = drawRitual.visual;
-    const effectProgress = visual.phase === "revealing" ? Math.min(1, (now - visual.phaseStartedAt) / 1150) : visual.progress;
-    ritualEffects.setState({ phase: visual.phase === "cutting" ? "selecting" : visual.phase, progress: effectProgress, holding: visual.holding, aspect: camera.aspect });
+    ritualEffects.setState({ phase: visual.phase === "revealing" ? "idle" : visual.phase === "cutting" ? "selecting" : visual.phase, progress: visual.progress, holding: visual.holding, aspect: camera.aspect });
   }
   ritualEffects.update(dt, time);
+  readingJourney.update({ active: Boolean(drawRitual?.isOpen && drawRitual.visual.journeyActive),
+    elapsedMs: drawRitual?.visual.journeyElapsedMs, arrival: drawRitual?.visual.journeyArrival,
+    spread: drawRitual?.session ? getDrawSpread(drawRitual.session.spreadId) : null,
+    backTexture: textures[`${activeDeckKey}:${DECKS[activeDeckKey].cardBack}`], camera });
   updateCameraTween(now);
 
   const positions = particleGeometry.attributes.position.array;
