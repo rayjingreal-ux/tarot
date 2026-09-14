@@ -203,10 +203,34 @@ test("each same-colour comet follows its actual world head through return, then 
     assert.ok(Array.from(positions).every(Number.isFinite));
   });
   checkHeads();
+  const departingBrightness = wakes().map((wake) => wake.material.uniforms.uOpacity.value);
   for (let i = 0; i <= 7; i++) h.effect.setTarget(i, { x: (i - 3) * .3, y: -.4, z: 1.05, scale: .35 });
   h.update(spread, 2520, .01); checkHeads();
+  wakes().forEach((wake, i) => assert.equal(wake.material.uniforms.uOpacity.value, departingBrightness[i], "distant tail brightness cannot jump at return"));
   h.update(spread, 5000, .9); assert.equal(wakes().length, 0);
   h.effect.hide(); h.update(spread, 0, 0, 2);
   assert.ok(h.effect.arrivalLayer.children.filter((node) => node.name.startsWith("Comet wake")).every((node) => !node.visible || node.geometry.drawRange.count === 0));
   h.effect.dispose();
+});
+
+test("wide arcs actually recede and shrink in the final camera view, without resetting on long loads", () => {
+  for (const count of [1, 7, 13]) for (const aspect of [.46, 1.7]) {
+    const seeds = createReadingOrbSeeds(count, seeded());
+    const options = { aspect, fov: 32, elapsedMs: 0 };
+    const start = getReadingOrbFieldPoses(seeds, options);
+    let previous = start;
+    for (const elapsedMs of [500, 2000, 5000, 60000, 3600000]) {
+      const current = getReadingOrbFieldPoses(seeds, { ...options, elapsedMs });
+      current.forEach((pose, i) => {
+        assert.ok(pose.z <= previous[i].z && pose.z > -27, "always further away, still within the 30-unit camera clip");
+        if (elapsedMs >= 5000) assert.ok(pose.size / -pose.z < start[i].size / -start[i].z * .5, "head size has real perspective contraction within five seconds");
+        assert.ok(pose.depthOpacity >= .67, "far lights retain a readable presence");
+      });
+      previous = current;
+    }
+    const radius = (p) => Math.hypot(p.x / (aspect * -p.z), p.y / -p.z);
+    const nearRadius = start.reduce((sum, p) => sum + radius(p), 0);
+    const farRadius = previous.reduce((sum, p) => sum + radius(p), 0);
+    assert.ok(farRadius < nearRadius * .8, "final field does not undo the vanishing-point contraction");
+  }
 });

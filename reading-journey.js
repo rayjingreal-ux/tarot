@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { createReadingOrbSeeds, getReadingOrbFieldPoses, getReadingOrbReturnPose,
-  createReadingCometHistory, recordReadingCometHead } from "./reading-orb-motion.js?v=20260915-01";
+  createReadingCometHistory, recordReadingCometHead } from "./reading-orb-motion.js?v=20260915-02";
 import { readingArrivalEnvelope } from "./reading-journey-timing.js?v=20260914-03";
 
 const vertexShader = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
@@ -136,7 +136,7 @@ export function createReadingJourney(scene, { reducedMotion = false, random = Ma
       arrivals.add(comet);
       cards.push({ carrier, card, light: glow(carrier, 0xffffff, 503), core: glow(carrier, 0xffffff, 505),
         from: new THREE.Vector3(), fromQuaternion: new THREE.Quaternion(), pose: {}, seed: null,
-        size: 1, lightOpacity: 0, coreOpacity: 0, comet, history });
+        size: 1, lightOpacity: 0, coreOpacity: 0, cometOpacity: 0, comet, history });
     }
   }
   function hide() {
@@ -265,7 +265,8 @@ export function createReadingJourney(scene, { reducedMotion = false, random = Ma
         // Capture the transform actually presented on this waiting frame. Do not
         // resample the random path when loading finishes or the camera changes.
         orb.carrier.getWorldPosition(orb.from); orb.carrier.getWorldQuaternion(orb.fromQuaternion);
-        updateComet(orb, orb.from, elapsedMs, camera, entry * .85, orb.size * .12);
+        orb.cometOpacity = entry * .85 * pose.depthOpacity;
+        updateComet(orb, orb.from, elapsedMs, camera, orb.cometOpacity, orb.size * .12);
       });
     }
     if (arrival > 0) {
@@ -286,7 +287,7 @@ export function createReadingJourney(scene, { reducedMotion = false, random = Ma
         carrier.quaternion.copy(isCut ? identity : orb.fromQuaternion).slerp(identity, smooth(envelope.travel));
         const travel = smooth(envelope.travel);
         if (!isCut) updateComet(orb, carrier.position, elapsedMs, camera,
-          .85 * (1 - envelope.unfold), orb.size * .12 * (1 - travel) + target.scale * .08 * travel);
+          orb.cometOpacity * (1 - envelope.unfold), orb.size * .12 * (1 - travel) + target.scale * .08 * travel);
         const glowSize = (isCut ? target.scale : orb.size * 1.25) * (1 - travel) + target.scale * 1.9 * travel;
         light.scale.set(glowSize * (1 + envelope.unfold * .25), glowSize * (1 + envelope.unfold * .7), 1);
         light.material.uniforms.uOpacity.value = (isCut ? envelope.unfold : orb.lightOpacity * (1 - travel) + .7 * travel) * (1 - envelope.clarify);

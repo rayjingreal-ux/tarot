@@ -30,13 +30,21 @@ function wander(seed, time, channel) {
 
 export function getReadingOrbPose(seed, { elapsedMs = 0, aspect = 1.6, fov = 32, reducedMotion = false }, pose = {}) {
   const time = reducedMotion ? 0 : elapsedMs / 1000;
-  const z = -15.2 - Math.tanh(wander(seed, time * .75, 2)) * 5.2;
-  const halfHeight = -z * Math.tan(fov * Math.PI / 360);
+  // Recede continuously, never wrap back toward the viewer on a slow load.
+  // Keep lateral radii at a fixed reference depth: multiplying them by the
+  // current distance would cancel perspective and make this a flat orbit.
+  const flight = 1 - Math.exp(-Math.max(0, time) / (2.9 + seed.speedX));
+  const near = 9.8 + (seed.depth - 10.2) * .32, far = 25.2 + seed.speedY;
+  const z = -(near + (far - near) * flight);
+  const halfHeight = 11 * Math.tan(fov * Math.PI / 360);
   const halfWidth = halfHeight * Math.max(.35, Math.min(3.5, aspect));
-  const x = Math.tanh(wander(seed, time, 0) * 1.4 + Math.sin(time * .61 + seed.phase) * .2) * .66;
-  const y = Math.tanh(wander(seed, time, 1) + Math.sin(time * .53 + seed.drift) * .16) * .35 - .13;
+  const heading = seed.phase + time * (.45 + seed.speedX * .32) + wander(seed, time * .55, 0) * .45;
+  const x = Math.cos(heading) * .94 + wander(seed, time * .7, 0) * .16;
+  const y = Math.sin(heading) * .64 + wander(seed, time * .7, 1) * .09 - .13;
+  const depthOpacity = 1 - flight * .32;
   return Object.assign(pose, { x: x * halfWidth, y: y * halfHeight, z,
-    size: seed.size * Math.min(1, Math.max(.6, aspect)), shimmer: .88 + Math.sin(time * 1.65 + seed.phase) * .12 });
+    size: seed.size * Math.min(1, Math.max(.6, aspect)) * (1 - flight * .18),
+    depthOpacity, shimmer: (.88 + Math.sin(time * 1.65 + seed.phase) * .12) * depthOpacity });
 }
 
 // Screen-near lights share bounded, reciprocal vortices. Evaluate every base
