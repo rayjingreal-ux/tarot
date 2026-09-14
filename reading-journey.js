@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { createReadingOrbSeeds, getReadingOrbFieldPoses, getReadingOrbReturnPose,
-  createReadingCometHistory, recordReadingCometHead } from "./reading-orb-motion.js?v=20260915-02";
+  createReadingCometHistory, recordReadingCometHead } from "./reading-orb-motion.js?v=20260915-03";
 import { readingArrivalEnvelope } from "./reading-journey-timing.js?v=20260914-03";
 
 const vertexShader = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
@@ -153,7 +153,7 @@ export function createReadingJourney(scene, { reducedMotion = false, random = Ma
   }
   function begin(journeyId, count) {
     currentJourney = journeyId; currentCount = count; returning = false;
-    const seeds = createReadingOrbSeeds(count + 1, random);
+    const seeds = createReadingOrbSeeds(count + 1, random, count);
     fieldSeeds = seeds.slice(0, count);
     cards.forEach((orb, i) => {
       root.add(orb.carrier); orb.carrier.position.set(0, 0, 0); orb.carrier.quaternion.identity();

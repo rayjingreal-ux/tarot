@@ -15,7 +15,7 @@ const source = readFileSync(new URL("../reading-journey.js", import.meta.url), "
   .replace(/from "\.\/(reading-(?:orb-motion|journey-timing)\.js)\?[^\"]+"/g,
     (_, file) => `from ${JSON.stringify(pathToFileURL(resolve(file)).href)}`);
 const { createReadingJourney } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
-const seeded = () => { let value = 41; return () => ((value = Math.imul(value, 1664525) + 1013904223 >>> 0) / 4294967296); };
+const seeded = (initial = 41) => { let value = initial; return () => ((value = Math.imul(value, 1664525) + 1013904223 >>> 0) / 4294967296); };
 function harness(reducedMotion = false) {
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(32, 1.7, .05, 30);
   camera.position.set(0, .25, 6.8); camera.lookAt(0, .1, .4); camera.updateMatrixWorld();
@@ -47,7 +47,7 @@ test("all spreads wait as exactly N coloured points, no backs or extra cut, insi
       for (const orb of h.orbs()) {
         assert.equal(back(orb).visible, false, "no rectangular back while loading");
         const point = orb.getWorldPosition(new THREE.Vector3()).project(h.camera);
-        assert.ok(Math.abs(point.x) < .73 && Math.abs(point.y) < .57 && Math.abs(point.z) < 1,
+        assert.ok(Math.abs(point.x) < .90 && Math.abs(point.y) < .80 && Math.abs(point.z) < 1,
           `${spread.id}/${aspect} point fits: ${point.x},${point.y}`);
         assert.ok(orb.position.z < -9, "points remain in the distance until ready");
       }
@@ -155,10 +155,11 @@ test("reduced motion freezes waiting geometry; hide/retry reset paths and dispos
   h.effect.dispose(); h.effect.dispose(); assert.equal(h.scene.children.length, 0); assert.equal(borrowedDisposed, false);
 });
 
-test("nearby lights spiral with reciprocal contraction and separation, without frame-dependent random jumps", () => {
+test("local encounters randomly wind or repel, release outward and stay continuous across cooldowns", () => {
   const seeds = createReadingOrbSeeds(2, seeded());
-  Object.assign(seeds[1], { wander: seeds[0].wander, drift: seeds[0].drift, phase: seeds[0].phase + .7 });
+  seeds[1] = { ...seeds[0], orbitId: 1, orbitPhase: seeds[0].orbitPhase + .22 };
   let angleMax = 0, radiusMin = Infinity, radiusMax = 0;
+  const modes = new Set();
   for (let elapsedMs = 0; elapsedMs < 16000; elapsedMs += 32) {
     const options = { elapsedMs, aspect: 1.7 }, [a, b] = getReadingOrbFieldPoses(seeds, options);
     const x = a.bx - b.bx, y = a.by - b.by;
@@ -168,15 +169,65 @@ test("nearby lights spiral with reciprocal contraction and separation, without f
       const radius = Math.hypot(tx, ty) / Math.hypot(x, y);
       radiusMin = Math.min(radiusMin, radius); radiusMax = Math.max(radiusMax, radius);
     }
-    assert.ok(Math.abs(a.dx + b.dx) < 1e-10 && Math.abs(a.dy + b.dy) < 1e-10);
+    if (a.encounterWeight > .1) {
+      modes.add(a.encounterMode);
+      assert.equal(a.partner, 1); assert.equal(b.partner, 0);
+      assert.equal(a.encounterMode, b.encounterMode);
+      assert.ok((a.dx + b.dx) * (a.bx + b.bx) + (a.dy + b.dy) * (a.by + b.by) >= -1e-9,
+        "the pair releases toward the outer ring, never pulling its centre inward");
+    }
+    if (elapsedMs % 2150 >= 1550) assert.ok(a.partner === -1 && b.partner === -1, "each window ends with an independent-motion cooldown");
     const [later] = getReadingOrbFieldPoses(seeds, { ...options, elapsedMs: elapsedMs + 1 });
-    assert.ok(Math.hypot(a.x - later.x, a.y - later.y, a.z - later.z) < .04, "continuous through random waypoint boundaries");
+    assert.ok(Math.hypot(a.x - later.x, a.y - later.y, a.z - later.z) < .04, "continuous through encounter and orbit boundaries");
     getReadingOrbFieldPoses([...seeds].reverse(), options).reverse().forEach((pose, i) => {
       for (const key of Object.keys(pose)) assert.ok(Math.abs(pose[key] - [a, b][i][key]) < 1e-9, "pair order cannot change the motion");
     });
   }
   assert.ok(angleMax > 1.5, "visible winding, not only independent translation");
   assert.ok(radiusMin < .85 && radiusMax > 1.1, "the pair both attracts and separates");
+  assert.deepEqual([...modes].sort(), [-1, 1], "encounters do not all use the same attraction rule");
+});
+
+test("main lights start spaced around the outer ring, independently of the extra cut seed", () => {
+  for (const count of [1, 2, 3, 4, 5, 7, 13]) for (let sample = 1; sample <= 20; sample++) {
+    const seeds = createReadingOrbSeeds(count + 1, seeded(sample), count).slice(0, count);
+    const poses = getReadingOrbFieldPoses(seeds, { elapsedMs: 0 });
+    const angles = poses.map((p) => Math.atan2(p.v, p.u)).sort((a, b) => a - b);
+    poses.forEach((p) => assert.ok(Math.hypot(p.u, p.v) >= .84, "start well outside the central region"));
+    angles.forEach((angle, i) => {
+      const next = i + 1 < count ? angles[i + 1] : angles[0] + Math.PI * 2;
+      assert.ok(next - angle > Math.PI * 2 / count * .81, "random jitter must preserve each starting sector");
+    });
+    for (const elapsedMs of [750, 2900, 5100, 8900, 30000, 60000]) {
+      const field = getReadingOrbFieldPoses(seeds, { elapsedMs });
+      field.forEach((p) => {
+        if (p.partner < 0) return;
+        const partner = field[p.partner];
+        assert.equal(partner.partner, seeds[field.indexOf(p)].orbitId, "each light has at most one reciprocal partner");
+      });
+    }
+  }
+});
+
+test("outer roaming keeps local encounters to pairs instead of collecting neighbouring lights into a group", () => {
+  let outwardPulses = 0;
+  for (const count of [7, 13]) for (let sample = 1; sample <= 20; sample++) {
+    const seeds = createReadingOrbSeeds(count, seeded(sample));
+    for (let elapsedMs = 0; elapsedMs <= 60000; elapsedMs += 100) {
+      const field = getReadingOrbFieldPoses(seeds, { elapsedMs });
+      field.forEach((p) => {
+        const neighbours = field.filter((other) => Math.hypot(p.u - other.u, p.v - other.v) < .18);
+        assert.ok(neighbours.length <= 2, `${count}/${sample}/${elapsedMs}: non-partners must not join a close pair`);
+        if (p.orbitPulse > .9) outwardPulses++;
+      });
+    }
+    for (const boundary of [1550, 2150, 3700, 4300, 5850, 6450]) {
+      const before = getReadingOrbFieldPoses(seeds, { elapsedMs: boundary - .001 });
+      const after = getReadingOrbFieldPoses(seeds, { elapsedMs: boundary + .001 });
+      before.forEach((p, i) => assert.ok(Math.hypot(p.x - after[i].x, p.y - after[i].y, p.z - after[i].z) < .00002));
+    }
+  }
+  assert.ok(outwardPulses > 0, "independent outward bursts continue on long waits");
 });
 
 test("comet history remains bounded and captures the real current head, resetting for a fresh timeline", () => {
@@ -213,7 +264,7 @@ test("each same-colour comet follows its actual world head through return, then 
   h.effect.dispose();
 });
 
-test("wide arcs actually recede and shrink in the final camera view, without resetting on long loads", () => {
+test("outer arcs retain space while the heads recede and shrink, without resetting on long loads", () => {
   for (const count of [1, 7, 13]) for (const aspect of [.46, 1.7]) {
     const seeds = createReadingOrbSeeds(count, seeded());
     const options = { aspect, fov: 32, elapsedMs: 0 };
@@ -225,12 +276,10 @@ test("wide arcs actually recede and shrink in the final camera view, without res
         assert.ok(pose.z <= previous[i].z && pose.z > -27, "always further away, still within the 30-unit camera clip");
         if (elapsedMs >= 5000) assert.ok(pose.size / -pose.z < start[i].size / -start[i].z * .5, "head size has real perspective contraction within five seconds");
         assert.ok(pose.depthOpacity >= .67, "far lights retain a readable presence");
+        assert.ok(Math.hypot(pose.u, pose.v) >= .659 && Math.hypot(pose.u, pose.v) <= 1.031,
+          "physical recession must not collapse the outer field toward the centre");
       });
       previous = current;
     }
-    const radius = (p) => Math.hypot(p.x / (aspect * -p.z), p.y / -p.z);
-    const nearRadius = start.reduce((sum, p) => sum + radius(p), 0);
-    const farRadius = previous.reduce((sum, p) => sum + radius(p), 0);
-    assert.ok(farRadius < nearRadius * .8, "final field does not undo the vanishing-point contraction");
   }
 });

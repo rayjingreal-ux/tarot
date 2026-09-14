@@ -2,9 +2,13 @@ const smooth = (n) => { const t = Math.max(0, Math.min(1, n)); return t * t * (3
 
 // Cosmetic seeds are sampled once per journey, independently of the draw session.
 // Every frame samples the same smooth path, never a fresh random coordinate.
-export function createReadingOrbSeeds(count, random = Math.random) {
-  const hue = random();
+export function createReadingOrbSeeds(count, random = Math.random, mainCount = count) {
+  const hue = random(), rotation = random() * Math.PI * 2;
+  const orbitSpeed = .48 + random() * .12, orbitDirection = random() < .5 ? -1 : 1;
+  const step = Math.PI * 2 / Math.max(1, mainCount);
   return Array.from({ length: count }, (_, index) => ({
+    orbitId: index, orbitSpeed, orbitDirection, orbitStep: step,
+    orbitPhase: rotation + (index % Math.max(1, mainCount)) * step + (random() - .5) * step * .18,
     hue: (hue + index * .61803398875 + random() * .16) % 1,
     phase: random() * Math.PI * 2 + index * 2.399963,
     drift: random() * Math.PI * 2,
@@ -19,36 +23,44 @@ const noise = (seed, key) => {
   const value = Math.sin(seed * 127.1 + key * 311.7) * 43758.5453;
   return (value - Math.floor(value)) * 2 - 1;
 };
-// Catmull-Rom keeps the tangent continuous through each random waypoint; unlike
-// easing between stops, a comet does not pause at every change of direction.
-function wander(seed, time, channel) {
-  const phase = time / 4.8 + seed.drift, segment = Math.floor(phase), t = phase - segment;
-  const sample = (offset) => noise(seed.wander + channel * 53, segment + offset);
-  const a = sample(-1), b = sample(0), c = sample(1), d = sample(2);
-  return .5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (-a + 3 * b - 3 * c + d) * t * t * t);
+function outerOrbit(seed, time, pose = {}) {
+  // Bound individual drift by the spacing of this spread, so independent
+  // wandering cannot accumulate into three or more lights chasing one point.
+  const spacing = Math.min(1, seed.orbitStep);
+  const breathingRoom = smooth((seed.orbitStep - .5) / .4);
+  const heading = seed.orbitPhase + seed.orbitDirection * seed.orbitSpeed * time
+    + spacing * (.14 + .06 * breathingRoom) * (Math.sin(time * .8 + seed.drift) - Math.sin(seed.drift))
+    + spacing * (.035 + .01 * breathingRoom) * (Math.sin(time * .43 + seed.turn) - Math.sin(seed.turn));
+  const cycle = time / (3.5 + seed.speedY) + seed.turn / (Math.PI * 2);
+  const epoch = Math.floor(cycle), phase = cycle - epoch;
+  const pulse = noise(seed.wander, epoch + 19) > -.3
+    ? Math.sin(Math.PI * phase) ** 2 * smooth(time / .65) : 0;
+  const radius = .90 + .035 * Math.sin(seed.phase) + .02 * Math.sin(time * .65 + seed.drift)
+    + pulse * (.17 + .05 * noise(seed.wander, epoch + 43));
+  return Object.assign(pose, { u: Math.cos(heading) * radius, v: Math.sin(heading) * radius, orbitPulse: pulse });
 }
 
 export function getReadingOrbPose(seed, { elapsedMs = 0, aspect = 1.6, fov = 32, reducedMotion = false }, pose = {}) {
   const time = reducedMotion ? 0 : elapsedMs / 1000;
-  // Recede continuously, never wrap back toward the viewer on a slow load.
-  // Keep lateral radii at a fixed reference depth: multiplying them by the
-  // current distance would cancel perspective and make this a flat orbit.
+  // Recede without collapsing the whole field into the centre. The outer
+  // orbit expands partially in world space, while heads retain true 1/z size.
   const flight = 1 - Math.exp(-Math.max(0, time) / (2.9 + seed.speedX));
   const near = 9.8 + (seed.depth - 10.2) * .32, far = 25.2 + seed.speedY;
   const z = -(near + (far - near) * flight);
-  const halfHeight = 11 * Math.tan(fov * Math.PI / 360);
+  const halfHeight = -z * Math.tan(fov * Math.PI / 360);
   const halfWidth = halfHeight * Math.max(.35, Math.min(3.5, aspect));
-  const heading = seed.phase + time * (.45 + seed.speedX * .32) + wander(seed, time * .55, 0) * .45;
-  const x = Math.cos(heading) * .94 + wander(seed, time * .7, 0) * .16;
-  const y = Math.sin(heading) * .64 + wander(seed, time * .7, 1) * .09 - .13;
+  outerOrbit(seed, time, pose);
+  const perspective = (near / -z) ** .16;
+  pose.u *= perspective; pose.v *= perspective;
   const depthOpacity = 1 - flight * .32;
-  return Object.assign(pose, { x: x * halfWidth, y: y * halfHeight, z,
+  return Object.assign(pose, { x: pose.u * .86 * halfWidth, y: (pose.v * .68 - .08) * halfHeight, z,
     size: seed.size * Math.min(1, Math.max(.6, aspect)) * (1 - flight * .18),
     depthOpacity, shimmer: (.88 + Math.sin(time * 1.65 + seed.phase) * .12) * depthOpacity });
 }
 
-// Screen-near lights share bounded, reciprocal vortices. Evaluate every base
-// first, then all pairs, so the result is independent of iteration order/FPS.
+// Short encounters are reconstructed from an analytic window start. That makes
+// choices stable across frame rates, resize, long waits and direct time samples.
+// Only nearby pairs qualify; each light has at most one partner, then a cooldown.
 export function getReadingOrbFieldPoses(seeds, options, poses = []) {
   const aspect = Math.max(.35, Math.min(3.5, options.aspect ?? 1.6));
   const time = options.reducedMotion ? 0 : (options.elapsedMs ?? 0) / 1000;
@@ -56,35 +68,66 @@ export function getReadingOrbFieldPoses(seeds, options, poses = []) {
   for (let i = 0; i < seeds.length; i++) {
     const p = poses[i] ??= {};
     getReadingOrbPose(seeds[i], options, p);
-    p.bx = p.x / (-p.z * tangent); p.by = p.y / (-p.z * tangent);
-    p.dx = p.dy = p.weight = 0;
+    p.bx = p.u; p.by = p.v;
+    p.dx = p.dy = p.encounterWeight = 0;
+    p.partner = -1; p.encounterMode = 0;
   }
-  const weight = (a, b) => (1 - smooth((Math.hypot(a.bx - b.bx, a.by - b.by) - .06) / .64))
-    * (1 - smooth((Math.abs(a.z - b.z) - 1.5) / 7));
-  for (let i = 0; i < seeds.length; i++) for (let j = i + 1; j < seeds.length; j++) {
-    const w = weight(poses[i], poses[j]); poses[i].weight += w; poses[j].weight += w;
-  }
-  for (let i = 0; i < seeds.length; i++) for (let j = i + 1; j < seeds.length; j++) {
-    const a = poses[i], b = poses[j], w = weight(a, b);
-    if (!w) continue;
-    const phase = time * 1.65 + seeds[i].turn + seeds[j].turn;
-    const angle = w * 3.5 * Math.sin(phase);
-    const radius = 1 + w * .34 * Math.sin(phase + Math.PI / 2);
-    let x = (a.bx - b.bx) / 2, y = (a.by - b.by) / 2;
-    if (Math.hypot(x, y) < .001) {
-      const side = Math.sign(seeds[i].phase - seeds[j].phase);
-      x = Math.cos(phase) * .001 * side; y = Math.sin(phase) * .001 * side;
+  const windowSeconds = 2.15, duration = 1.55, epoch = Math.floor(time / windowSeconds);
+  const local = time - epoch * windowSeconds;
+  if (local < duration && !options.reducedMotion) {
+    const anchors = seeds.map((seed) => getReadingOrbPose(seed, { ...options, elapsedMs: epoch * windowSeconds * 1000 }));
+    const candidates = [];
+    for (let i = 0; i < seeds.length; i++) for (let j = i + 1; j < seeds.length; j++) {
+      const distance = Math.hypot(anchors[i].u - anchors[j].u, anchors[i].v - anchors[j].v);
+      if (distance < .34 && Math.abs(anchors[i].z - anchors[j].z) < 3) candidates.push({ i, j, distance,
+        low: Math.min(seeds[i].orbitId, seeds[j].orbitId), high: Math.max(seeds[i].orbitId, seeds[j].orbitId) });
     }
-    const c = Math.cos(angle), s = Math.sin(angle), divisor = Math.max(1, a.weight, b.weight);
-    const dx = ((x * c - y * s) * radius - x) / divisor;
-    const dy = ((x * s + y * c) * radius - y) / divisor;
-    a.dx += dx; a.dy += dy; b.dx -= dx; b.dy -= dy;
+    candidates.sort((a, b) => a.distance - b.distance || a.low - b.low || a.high - b.high);
+    const taken = new Set(), progress = local / duration, envelope = Math.sin(Math.PI * progress) ** 2;
+    for (const pair of candidates) {
+      const { i, j } = pair;
+      if (taken.has(i) || taken.has(j)) continue;
+      taken.add(i); taken.add(j);
+      const a = poses[i], b = poses[j];
+      const key = seeds[i].wander + seeds[j].wander + pair.low * 97 + pair.high * 113;
+      const choice = noise(key, epoch * 7 + 3), mode = choice > -.15 ? 1 : -1;
+      const x = (a.bx - b.bx) / 2, y = (a.by - b.by) / 2, distance = Math.hypot(x, y) * 2;
+      const proximity = 1 - smooth((distance - .30) / .25);
+      a.partner = seeds[j].orbitId; b.partner = seeds[i].orbitId;
+      a.encounterMode = b.encounterMode = mode;
+      a.encounterWeight = b.encounterWeight = envelope * proximity;
+      if (mode < 0) {
+        const angle = (noise(key, epoch + 11) < 0 ? -1 : 1) * 3.8 * envelope;
+        const radius = 1 - .28 * envelope, c = Math.cos(angle), s = Math.sin(angle);
+        const dx = ((x * c - y * s) * radius - x) * proximity;
+        const dy = ((x * s + y * c) * radius - y) * proximity;
+        a.dx += dx; a.dy += dy; b.dx -= dx; b.dy -= dy;
+      } else {
+        // Use the stable contact direction if the base paths cross exactly.
+        const contactX = anchors[i].u - anchors[j].u, contactY = anchors[i].v - anchors[j].v;
+        const contactLength = Math.max(.001, Math.hypot(contactX, contactY));
+        const push = envelope * proximity * (.07 + .025 * choice);
+        a.dx += contactX / contactLength * push; a.dy += contactY / contactLength * push;
+        b.dx -= contactX / contactLength * push; b.dy -= contactY / contactLength * push;
+      }
+      const release = Math.sin(Math.PI * smooth((progress - .5) / .5)) ** 2;
+      const outward = mode > 0 ? envelope * proximity * .19 : release * proximity * .17;
+      for (const p of [a, b]) {
+        const radius = Math.max(.001, Math.hypot(p.bx, p.by));
+        p.dx += p.bx / radius * outward; p.dy += p.by / radius * outward;
+      }
+    }
   }
   for (let i = 0; i < seeds.length; i++) {
     const p = poses[i], halfHeight = -p.z * tangent;
-    // Smooth bounds keep passing comets inside the view without edge impacts.
-    p.x = .72 * Math.tanh((p.bx + p.dx) / (aspect * .72)) * aspect * halfHeight;
-    p.y = .56 * Math.tanh((p.by + p.dy) / .56) * halfHeight;
+    const x = p.bx + p.dx, y = p.by + p.dy, radius = Math.hypot(x, y);
+    const heading = radius > .001 ? Math.atan2(y, x) : seeds[i].orbitPhase;
+    // A soft annulus stops attraction from pulling the field into the centre;
+    // the generous outer bound leaves room for release pulses and broad arcs.
+    const bounded = .66 + .37 * smooth((radius - .58) / .53);
+    p.u = Math.cos(heading) * bounded; p.v = Math.sin(heading) * bounded;
+    p.x = p.u * .86 * aspect * halfHeight;
+    p.y = (p.v * .68 - .08) * halfHeight;
   }
   poses.length = seeds.length;
   return poses;
